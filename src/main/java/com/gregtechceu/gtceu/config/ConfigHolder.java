@@ -411,6 +411,11 @@ public class ConfigHolder {
         public boolean orderedAssemblyLineFluids = false;
 
         @Configurable
+        @Configurable.Comment({ "Whether to add a Modern Industrialization-like machine efficiency modifier to all machines.",
+                "Default: false" })
+        public boolean doEfficiencyModifier = false;
+
+        @Configurable
         @Configurable.Comment({
                 "Let Buffer has more ability.",
                 "When enabled it, Buffer will can used to assemble line and so on.",
