@@ -2,15 +2,9 @@ package com.gregtechceu.gtceu.api.misc;
 
 import com.gregtechceu.gtceu.api.capability.IEnergyInfoProvider;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
-
 import java.math.BigInteger;
 import java.util.List;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
 public class EnergyInfoProviderList implements IEnergyInfoProvider {
 
     private final List<? extends IEnergyInfoProvider> list;
@@ -32,6 +26,24 @@ public class EnergyInfoProviderList implements IEnergyInfoProvider {
         }
 
         return new EnergyInfo(capacity, stored);
+    }
+
+    @Override
+    public long getInputPerSec() {
+        long sum = 0;
+        for (IEnergyInfoProvider eip : list) {
+            sum += eip.getInputPerSec();
+        }
+        return sum;
+    }
+
+    @Override
+    public long getOutputPerSec() {
+        long sum = 0;
+        for (IEnergyInfoProvider eip : list) {
+            sum += eip.getOutputPerSec();
+        }
+        return sum;
     }
 
     @Override

@@ -1,56 +1,120 @@
 dependencies {
-    implementation forge.neoForge
+    compileOnly(libs.jetbrains.annotations)
 
-    // LDLib
-    api(forge.ldlib.neoforge)
-    jarJar(forge.ldlib.neoforge)
+    testJarJar(testApi(libs.testframework.get()))
+
+    jarJar(api(forge.ldlib.get()))
 
     // Registrate
-    api("com.tterrag.registrate:Registrate:${forge.versions.registrate.get()}")
-    jarJar("com.tterrag.registrate:Registrate:${forge.versions.registrate.get()}")
+    jarJar(api(forge.registrate.get()))
 
     // Configuration
-    api(forge.configuration)
-    jarJar(forge.configuration)
+    jarJar(api(forge.configuration.get()))
 
-    // Create and its dependencies
-    createCompileOnly("com.simibubi.create:create-${libs.versions.minecraftVeryOld.get()}:${forge.versions.createForge.get()}:all") { transitive = false }
-    createCompileOnly forge.flywheel
+    // Recipe Viewers
+    compileOnly(forge.bundles.jei)
+    compileOnly(forge.bundles.rei)
+    compileOnly(forge.emi)
 
-    // JEI
-    jeiCompileOnly(forge.jei.common.api) { transitive = false }
-    jeiCompileOnly(forge.jei.forge.api) { transitive = false }
-    jeiCompileOnly(forge.jei.forge.impl) { transitive = false }
+    // WAILA-likes
+    compileOnly(forge.jade)
 
-    // REI
-    reiCompileOnlyApi forge.rei.plugin
-    reiCompileOnlyApi forge.rei.api
-    reiCompileOnly forge.rei.forge
-
-    // EMI
-    emiCompileOnlyApi("dev.emi:emi-neoforge:${forge.versions.emi.get()}:api")
-    emiImplementation forge.emi
-
-    // TOP
-    topCompileOnlyApi(forge.theoneprobe) { transitive = false }
-
-    // Jade
-    jadeCompileOnlyApi(forge.jade)
+    // Curios
+    compileOnly(variantOf(forge.curios) { classifier("api") })
 
     // AE2
-    ae2CompileOnlyApi(forge.ae2) { transitive = false }
-    compileOnly("curse.maven:ae2wtlib-459929:5217955")
+    compileOnly(forge.ae2)
+
+    // Create
+    compileOnly(forge.ponder)
+    compileOnly(variantOf(forge.create) { classifier("slim") })
+    compileOnly(forge.flywheel.forge.api)
 
     // KJS
-    kjsImplementation forge.kubejs
+    compileOnly(forge.bundles.kjs)
 
-    // Shimmer
-    shimmerCompileOnly(forge.shimmer.forge) { transitive = false }
-    compileOnly("maven.modrinth:embeddium:1.0.0-beta.1+mc1.21")
-    runtimeOnly("maven.modrinth:embeddium:1.0.0-beta.1+mc1.21")
-    shimmerCompileOnly("maven.modrinth:oculus:1.20.1-1.6.9")
+    // Rendering / Optimizations
+    compileOnly(forge.sodium)
+    compileOnly(forge.iris)
+    compileOnly(forge.modernfix)
 
-    // lombok
-    compileOnly 'org.projectlombok:lombok:1.18.30'
-    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    // Teams
+    compileOnly(forge.ftblibrary)
+    compileOnly(forge.ftbteams)
+    compileOnly(forge.ftbquests)
+    compileOnly(forge.resourcefullib)
+    compileOnly(forge.argonauts)
+    compileOnly(forge.heracles)
+
+    // Maps
+    compileOnly(forge.ftbchunks)
+    compileOnly(forge.xaerosminimap)
+    compileOnly(forge.xaerosworldmap)
+    compileOnly(forge.journeymap.api)
+    compileOnly(forge.journeymap.forge)
+
+    // GameStages
+    // compileOnly(forge.gamestages)
+
+    // CC: Tweaked
+    compileOnly(forge.cc.tweaked.core.api)
+    compileOnly(forge.cc.tweaked.forge.api)
+
+    // Standard runtime mods //
+    localRuntime(libs.testframework)
+
+    localRuntime(forge.jade)
+    localRuntime(forge.ae2)
+    localRuntime(forge.spark)
+    localRuntime(forge.modernfix)
+    localRuntime(forge.create) {
+        // Needed to prevent game-test crashes
+        exclude group: "maven.modrinth", module: "journeymap"
+        exclude group: "info.journeymap", module: "journeymap-api-neoforge"
+    }
+
+    // Runtime Recipe Viewers - uncomment whichever one you want to use //
+    localRuntime(forge.emi)
+    localRuntime(forge.jei.neoforge.impl)
+//    localRuntime(forge.bundles.rei.runtime)
+
+    // Client-only runtime mods //
+    clientLocalRuntime(forge.sodium)
+    clientLocalRuntime(forge.iris)
+    renderNurseCfg(libs.renderNurse)
+
+    //////////////////////////////////////////////////////
+    // Runtime mods for dev testing with unclean client //
+    //////////////////////////////////////////////////////
+    extraLocalRuntime(forge.javd)
+    extraLocalRuntime(forge.trenzalore)
+    extraLocalRuntime(forge.curios)
+//    extraLocalRuntime(forge.worldstripper)
+    localRuntime(forge.cc.tweaked.forge.impl)
+
+    localRuntime(forge.bundles.kjs)
+
+    extraLocalRuntime(forge.ftblibrary)
+    extraLocalRuntime(forge.ftbteams)
+    extraLocalRuntime(forge.ftbquests)
+
+//    extraLocalRuntime(forge.heracles)
+    extraLocalRuntime(forge.resourcefullib)
+
+//    extraLocalRuntime(forge.xaerosminimap)
+//    extraLocalRuntime(forge.xaerosworldmap)
+//    extraLocalRuntime(forge.journeymap.forge)
+//    extraLocalRuntime(forge.ftbchunks)
+
+//    extraLocalRuntime(forge.gamestages)
+    extraLocalRuntime(forge.bookshelf) {
+        transitive = false
+    }
+
+    extraLocalRuntime(forge.kotlinforforge) {
+        transitive = false
+    }
+    extraLocalRuntime(forge.observable)
+    //////////////////////////
+
 }

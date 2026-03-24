@@ -1,16 +1,15 @@
 package com.gregtechceu.gtceu.client.renderer;
 
 import com.gregtechceu.gtceu.api.GTValues;
-import com.gregtechceu.gtceu.api.RotationState;
 import com.gregtechceu.gtceu.api.block.IMachineBlock;
 import com.gregtechceu.gtceu.api.block.MetaMachineBlock;
+import com.gregtechceu.gtceu.api.data.RotationState;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MultiblockMachineDefinition;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.api.machine.multiblock.MultiblockControllerMachine;
-import com.gregtechceu.gtceu.api.multiblock.MultiblockShapeInfo;
+import com.gregtechceu.gtceu.api.pattern.MultiblockShapeInfo;
 
-import com.lowdragmc.lowdraglib.Platform;
 import com.lowdragmc.lowdraglib.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib.utils.BlockInfo;
 import com.lowdragmc.lowdraglib.utils.TrackedDummyWorld;
@@ -108,6 +107,7 @@ public class MultiblockInWorldPreviewRenderer {
      */
     public static void showPreview(BlockPos pos, MultiblockControllerMachine controller,
                                    int duration) {
+        if (!controller.getDefinition().isRenderWorldPreview()) return;
         Direction front = controller.getFrontFacing();
         Direction up = controller.getUpwardsFacing();
         MultiblockShapeInfo shapeInfo = controller.getDefinition().getMatchingShapes().get(0);
@@ -165,8 +165,8 @@ public class MultiblockInWorldPreviewRenderer {
                     offset = switch (front) {
                         case NORTH, UP, DOWN -> offset.rotate(Rotation.NONE);
                         case SOUTH -> offset.rotate(Rotation.CLOCKWISE_180);
-                        case WEST -> offset.rotate(Rotation.COUNTERCLOCKWISE_90);
-                        case EAST -> offset.rotate(Rotation.CLOCKWISE_90);
+                        case EAST -> offset.rotate(Rotation.COUNTERCLOCKWISE_90);
+                        case WEST -> offset.rotate(Rotation.CLOCKWISE_90);
                     };
 
                     Rotation r = up == Direction.NORTH ? Rotation.NONE : up == Direction.EAST ? Rotation.CLOCKWISE_90 :
@@ -195,14 +195,15 @@ public class MultiblockInWorldPreviewRenderer {
 
                     BlockPos realPos = pos.offset(offset);
 
-                    if (column[z].getBlockEntity(realPos,
-                            Platform.getFrozenRegistry()) instanceof IMachineBlockEntity holder &&
+                    // spotless:off
+                    if (column[z].getBlockEntity(realPos, controller.getLevel().registryAccess()) instanceof IMachineBlockEntity holder &&
                             holder.getMetaMachine() instanceof IMultiController cont) {
                         holder.getSelf().setLevel(LEVEL);
                         controllerBase = cont;
                     } else {
                         blockMap.put(realPos, BlockInfo.fromBlockState(blockState));
                     }
+                    // spotless:on
                 }
             }
         }
@@ -218,32 +219,36 @@ public class MultiblockInWorldPreviewRenderer {
     private static BlockPos rotateByFrontAxis(BlockPos pos, Direction front, Rotation rotation) {
         if (front.getAxis() == Direction.Axis.X) {
             return switch (rotation) {
-                default -> pos;
-                case CLOCKWISE_90 -> new BlockPos(pos.getX(), -front.getAxisDirection().getStep() * pos.getZ(),
-                        -front.getAxisDirection().getStep() * -pos.getY());
-                case CLOCKWISE_180 -> new BlockPos(pos.getX(), -pos.getY(), -pos.getZ());
-                case COUNTERCLOCKWISE_90 -> new BlockPos(pos.getX(), front.getAxisDirection().getStep() * pos.getZ(),
-                        -front.getAxisDirection().getStep() * pos.getY());
+                default -> new BlockPos(-pos.getX(), pos.getY(), -pos.getZ());
+                case CLOCKWISE_90 -> new BlockPos(-pos.getX(), -front.getAxisDirection().getStep() * pos.getZ(),
+                        front.getAxisDirection().getStep() * -pos.getY());
+                case CLOCKWISE_180 -> new BlockPos(-pos.getX(), -pos.getY(), pos.getZ());
+                case COUNTERCLOCKWISE_90 -> new BlockPos(-pos.getX(), front.getAxisDirection().getStep() * pos.getZ(),
+                        front.getAxisDirection().getStep() * pos.getY());
             };
         } else if (front.getAxis() == Direction.Axis.Y) {
             return switch (rotation) {
-                default -> new BlockPos(-pos.getX(), -front.getAxisDirection().getStep() * pos.getZ(),
-                        -front.getAxisDirection().getStep() * pos.getY());
-                case CLOCKWISE_90 -> new BlockPos(-front.getAxisDirection().getStep() * pos.getY(),
-                        -front.getAxisDirection().getStep() * pos.getZ(), pos.getX());
-                case CLOCKWISE_180 -> new BlockPos(pos.getX(), -front.getAxisDirection().getStep() * pos.getZ(),
-                        front.getAxisDirection().getStep() * pos.getY());
-                case COUNTERCLOCKWISE_90 -> new BlockPos(front.getAxisDirection().getStep() * pos.getY(),
-                        -front.getAxisDirection().getStep() * pos.getZ(), -pos.getX());
+                default -> new BlockPos(-front.getAxisDirection().getStep() * pos.getX(),
+                        -front.getAxisDirection().getStep() * pos.getZ(),
+                        -pos.getY());
+                case CLOCKWISE_90 -> new BlockPos(pos.getY(),
+                        -front.getAxisDirection().getStep() * pos.getZ(),
+                        -front.getAxisDirection().getStep() * pos.getX());
+                case CLOCKWISE_180 -> new BlockPos(front.getAxisDirection().getStep() * pos.getX(),
+                        -front.getAxisDirection().getStep() * pos.getZ(),
+                        pos.getY());
+                case COUNTERCLOCKWISE_90 -> new BlockPos(-pos.getY(),
+                        -front.getAxisDirection().getStep() * pos.getZ(),
+                        front.getAxisDirection().getStep() * pos.getX());
             };
         } else if (front.getAxis() == Direction.Axis.Z) {
             return switch (rotation) {
                 default -> pos;
-                case CLOCKWISE_90 -> new BlockPos(-front.getAxisDirection().getStep() * pos.getY(),
-                        front.getAxisDirection().getStep() * pos.getX(), pos.getZ());
-                case CLOCKWISE_180 -> new BlockPos(-pos.getX(), -pos.getY(), pos.getZ());
-                case COUNTERCLOCKWISE_90 -> new BlockPos(-front.getAxisDirection().getStep() * -pos.getY(),
+                case CLOCKWISE_90 -> new BlockPos(front.getAxisDirection().getStep() * pos.getY(),
                         -front.getAxisDirection().getStep() * pos.getX(), pos.getZ());
+                case CLOCKWISE_180 -> new BlockPos(-pos.getX(), -pos.getY(), pos.getZ());
+                case COUNTERCLOCKWISE_90 -> new BlockPos(front.getAxisDirection().getStep() * -pos.getY(),
+                        front.getAxisDirection().getStep() * pos.getX(), pos.getZ());
             };
         }
         return pos;
@@ -281,7 +286,7 @@ public class MultiblockInWorldPreviewRenderer {
                                     .getBlockEntityRenderDispatcher().getRenderer(tile);
                             if (ber != null) {
                                 if (tile.hasLevel() && tile.getType().isValid(tile.getBlockState())) {
-                                    ber.render(tile, partialTicks, poseStack, buffers, 0xF000F0,
+                                    ber.render(tile, partialTicks, poseStack, buffers, LightTexture.FULL_BRIGHT,
                                             OverlayTexture.NO_OVERLAY);
                                 }
                             }
@@ -382,8 +387,8 @@ public class MultiblockInWorldPreviewRenderer {
                 if (Thread.interrupted())
                     return;
                 var layer = RenderType.chunkBufferLayers().get(i);
-                var buffer = new BufferBuilder(new ByteBufferBuilder(layer.bufferSize()), VertexFormat.Mode.QUADS,
-                        DefaultVertexFormat.BLOCK);
+                var buffer = new BufferBuilder(new ByteBufferBuilder(layer.bufferSize()),
+                        VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
                 renderBlocks(level, poseStack, dispatcher, layer, new WorldSceneRenderer.VertexConsumerWrapper(buffer),
                         renderedBlocks);
                 var builder = buffer.buildOrThrow();

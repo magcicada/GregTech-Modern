@@ -5,9 +5,9 @@ import com.gregtechceu.gtceu.api.capability.ICoverable;
 import com.gregtechceu.gtceu.api.cover.CoverBehavior;
 import com.gregtechceu.gtceu.api.cover.CoverDefinition;
 import com.gregtechceu.gtceu.api.registry.GTRegistries;
+import com.gregtechceu.gtceu.api.transfer.fluid.IFluidHandlerModifiable;
 import com.gregtechceu.gtceu.utils.GTUtil;
 
-import com.lowdragmc.lowdraglib.side.fluid.IFluidHandlerModifiable;
 import com.lowdragmc.lowdraglib.syncdata.IEnhancedManaged;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
@@ -30,16 +30,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 
-/**
- * @author KilaBash
- * @date 2023/2/18
- * @implNote MachineCoverContainer
- */
 public class MachineCoverContainer implements ICoverable, IEnhancedManaged {
 
     public static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(MachineCoverContainer.class);
     @Getter
     private final FieldManagedStorage syncStorage = new FieldManagedStorage(this);
+    @Getter
     private final MetaMachine machine;
     @DescSynced
     @Persisted
@@ -153,7 +149,7 @@ public class MachineCoverContainer implements ICoverable, IEnhancedManaged {
     }
 
     @Override
-    public CoverBehavior getCoverAtSide(Direction side) {
+    public @Nullable CoverBehavior getCoverAtSide(Direction side) {
         return switch (side) {
             case UP -> up;
             case SOUTH -> south;
@@ -180,13 +176,13 @@ public class MachineCoverContainer implements ICoverable, IEnhancedManaged {
     }
 
     @Override
-    public IItemHandlerModifiable getItemTransferCap(@Nullable Direction side, boolean useCoverCapability) {
-        return machine.getItemTransferCap(side, useCoverCapability);
+    public IItemHandlerModifiable getItemHandlerCap(@Nullable Direction side, boolean useCoverCapability) {
+        return machine.getItemHandlerCap(side, useCoverCapability);
     }
 
     @Override
-    public IFluidHandlerModifiable getFluidTransferCap(@Nullable Direction side, boolean useCoverCapability) {
-        return machine.getFluidTransferCap(side, useCoverCapability);
+    public IFluidHandlerModifiable getFluidHandlerCap(@Nullable Direction side, boolean useCoverCapability) {
+        return machine.getFluidHandlerCap(side, useCoverCapability);
     }
 
     @SuppressWarnings("unused")

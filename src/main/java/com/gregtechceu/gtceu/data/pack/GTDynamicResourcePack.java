@@ -2,14 +2,16 @@ package com.gregtechceu.gtceu.data.pack;
 
 import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.addon.AddonFinder;
-import com.gregtechceu.gtceu.api.addon.IGTAddon;
 import com.gregtechceu.gtceu.config.ConfigHolder;
+import com.gregtechceu.gtceu.integration.kjs.GTKubeJSPlugin;
 
-import com.lowdragmc.lowdraglib.Platform;
-
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.SharedConstants;
+import net.minecraft.client.renderer.texture.atlas.SpriteSource;
+import net.minecraft.client.renderer.texture.atlas.SpriteSources;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.data.models.blockstates.BlockStateGenerator;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackResources;
@@ -17,150 +19,156 @@ import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.metadata.MetadataSectionSerializer;
 import net.minecraft.server.packs.metadata.pack.PackMetadataSection;
 import net.minecraft.server.packs.resources.IoSupplier;
+import net.neoforged.neoforge.client.model.generators.BlockModelBuilder;
+import net.neoforged.neoforge.client.model.generators.ItemModelBuilder;
+import net.neoforged.neoforge.client.model.generators.ModelBuilder;
 
 import com.google.common.collect.Sets;
 import com.google.gson.JsonElement;
+import com.mojang.serialization.JsonOps;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
-import java.util.Objects;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-
-import javax.annotation.ParametersAreNonnullByDefault;
 
 import static com.gregtechceu.gtceu.data.pack.GTDynamicDataPack.writeJson;
 
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
 public class GTDynamicResourcePack implements PackResources {
 
     protected static final ObjectSet<String> CLIENT_DOMAINS = new ObjectOpenHashSet<>();
-    @ApiStatus.Internal
-    public static final ConcurrentMap<ResourceLocation, byte[]> DATA = new ConcurrentHashMap<>();
+    protected static final GTDynamicPackContents CONTENTS = new GTDynamicPackContents();
+
+    private static final FileToIdConverter ATLAS_ID_CONVERTER = FileToIdConverter.json("atlases");
+    public static final FileToIdConverter TEXTURE_ID_CONVERTER = SpriteSource.TEXTURE_ID_CONVERTER;
+    public static final FileToIdConverter BLOCKSTATE_ID_CONVERTER = FileToIdConverter.json("blockstates");
+    public static final FileToIdConverter MODEL_ID_CONVERTER = FileToIdConverter.json("models");
 
     private final PackLocationInfo info;
 
     static {
-        CLIENT_DOMAINS.addAll(Sets.newHashSet(GTCEu.MOD_ID, "minecraft", "neoforge", "c"));
+        CLIENT_DOMAINS.addAll(Sets.newHashSet(GTCEu.MOD_ID, "minecraft", "neoforge", "c", "kubejs"));
     }
 
     public GTDynamicResourcePack(PackLocationInfo info) {
-        this(info, AddonFinder.getAddons().stream().map(IGTAddon::addonModId).collect(Collectors.toSet()));
+        this(info, AddonFinder.getAddons().keySet());
     }
 
     public GTDynamicResourcePack(PackLocationInfo info, Collection<String> domains) {
         this.info = info;
         CLIENT_DOMAINS.addAll(domains);
+
+        if (GTCEu.Mods.isKubeJSLoaded()) {
+            GTKubeJSPlugin.generateMachineBlockModels();
+        }
+    }
+
+    public static void addNamespace(String namespace) {
+        CLIENT_DOMAINS.add(namespace);
     }
 
     public static void clearClient() {
-        DATA.clear();
+        CONTENTS.clearData();
+    }
+
+    public static void addResource(ResourceLocation location, JsonElement obj) {
+        addResource(location, obj.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static void addResource(ResourceLocation location, byte[] data) {
+        if (ConfigHolder.INSTANCE.dev.dumpAssets) {
+            Path parent = GTCEu.GTCEU_FOLDER.resolve("dumped/assets");
+            writeJson(location, parent, data);
+        }
+        CONTENTS.addToData(location, data);
     }
 
     public static void addBlockModel(ResourceLocation loc, JsonElement obj) {
-        byte[] modelBytes = obj.toString().getBytes(StandardCharsets.UTF_8);
-        ResourceLocation l = getModelLocation(loc);
-        if (ConfigHolder.INSTANCE.dev.dumpAssets) {
-            Path parent = Platform.getGamePath().resolve("gtceu/dumped/assets");
-            writeJson(l, null, parent, modelBytes);
+        if (!loc.getPath().startsWith("block/")) {
+            loc = loc.withPrefix("block/");
         }
-        DATA.put(l, modelBytes);
+        addModel(loc, obj);
     }
 
     public static void addBlockModel(ResourceLocation loc, Supplier<JsonElement> obj) {
         addBlockModel(loc, obj.get());
     }
 
+    public static void addBlockModel(BlockModelBuilder builder) {
+        addBlockModel(builder.getLocation(), builder.toJson());
+    }
+
     public static void addItemModel(ResourceLocation loc, JsonElement obj) {
-        byte[] modelBytes = obj.toString().getBytes(StandardCharsets.UTF_8);
-        ResourceLocation l = getItemModelLocation(loc);
-        if (ConfigHolder.INSTANCE.dev.dumpAssets) {
-            Path parent = Platform.getGamePath().resolve("gtceu/dumped/assets");
-            writeJson(l, null, parent, modelBytes);
+        if (!loc.getPath().startsWith("item/")) {
+            loc = loc.withPrefix("item/");
         }
-        DATA.put(l, modelBytes);
+        addModel(loc, obj);
+    }
+
+    public static void addItemModel(ItemModelBuilder builder) {
+        addItemModel(builder.getLocation(), builder.toJson());
     }
 
     public static void addItemModel(ResourceLocation loc, Supplier<JsonElement> obj) {
         addItemModel(loc, obj.get());
     }
 
+    public static void addModel(ResourceLocation loc, JsonElement obj) {
+        loc = MODEL_ID_CONVERTER.idToFile(loc);
+        addResource(loc, obj);
+    }
+
+    public static void addModel(ResourceLocation loc, Supplier<JsonElement> obj) {
+        addModel(loc, obj.get());
+    }
+
+    public static <T extends ModelBuilder<T>> void addModel(T builder) {
+        addModel(builder.getLocation(), builder.toJson());
+    }
+
     public static void addBlockState(ResourceLocation loc, JsonElement stateJson) {
-        byte[] stateBytes = stateJson.toString().getBytes(StandardCharsets.UTF_8);
-        ResourceLocation l = getBlockStateLocation(loc);
-        if (ConfigHolder.INSTANCE.dev.dumpAssets) {
-            Path parent = Platform.getGamePath().resolve("gtceu/dumped/assets");
-            writeJson(l, null, parent, stateBytes);
-        }
-        DATA.put(l, stateBytes);
+        loc = BLOCKSTATE_ID_CONVERTER.idToFile(loc);
+        addResource(loc, stateJson);
     }
 
     public static void addBlockState(ResourceLocation loc, Supplier<JsonElement> generator) {
         addBlockState(loc, generator.get());
     }
 
-    public static void addBlockTexture(ResourceLocation loc, byte[] data) {
-        ResourceLocation l = getTextureLocation("block", loc);
-        if (ConfigHolder.INSTANCE.dev.dumpAssets) {
-            Path parent = Platform.getGamePath().resolve("gtceu/dumped/assets");
-            writeByteArray(l, null, parent, data);
-        }
-        DATA.put(l, data);
+    public static void addBlockState(BlockStateGenerator generator) {
+        addBlockState(BuiltInRegistries.BLOCK.getKey(generator.getBlock()), generator.get());
     }
 
-    public static void addItemTexture(ResourceLocation loc, byte[] data) {
-        ResourceLocation l = getTextureLocation("item", loc);
-        if (ConfigHolder.INSTANCE.dev.dumpAssets) {
-            Path parent = Platform.getGamePath().resolve("gtceu/dumped/assets");
-            writeByteArray(l, null, parent, data);
-        }
-        DATA.put(l, data);
+    public static void addAtlasSpriteSource(ResourceLocation atlasLoc, SpriteSource source) {
+        addAtlasSpriteSourceList(atlasLoc, Collections.singletonList(source));
     }
 
-    @ApiStatus.Internal
-    public static void writeByteArray(ResourceLocation id, @Nullable String subdir, Path parent, byte[] data) {
-        try {
-            Path file;
-            if (subdir != null) {
-                file = parent.resolve(id.getNamespace()).resolve(subdir).resolve(id.getPath() + ".png"); // assume PNG
-            } else {
-                file = parent.resolve(id.getNamespace()).resolve(id.getPath()); // assume the file type is also appended
-                                                                                // if a full path is given.
-            }
-            Files.createDirectories(file.getParent());
-            try (OutputStream output = Files.newOutputStream(file)) {
-                output.write(data);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    public static void addAtlasSpriteSourceList(ResourceLocation loc, List<SpriteSource> sources) {
+        loc = ATLAS_ID_CONVERTER.idToFile(loc);
+        JsonElement sourceJson = SpriteSources.FILE_CODEC.encodeStart(JsonOps.INSTANCE, sources)
+                .getOrThrow();
+        addResource(loc, sourceJson);
     }
 
-    @Nullable
     @Override
-    public IoSupplier<InputStream> getRootResource(String... elements) {
+    public @Nullable IoSupplier<InputStream> getRootResource(String... elements) {
+        if (elements.length > 0 && elements[0].equals("pack.png")) {
+            return () -> GTCEu.class.getResourceAsStream("/icon.png");
+        }
         return null;
     }
 
     @Override
-    public IoSupplier<InputStream> getResource(PackType type, ResourceLocation location) {
+    public @Nullable IoSupplier<InputStream> getResource(PackType type, ResourceLocation location) {
         if (type == PackType.CLIENT_RESOURCES) {
-            if (DATA.containsKey(location))
-                return () -> new ByteArrayInputStream(DATA.get(location));
+            return CONTENTS.getResource(location);
         }
         return null;
     }
@@ -168,15 +176,7 @@ public class GTDynamicResourcePack implements PackResources {
     @Override
     public void listResources(PackType packType, String namespace, String path, ResourceOutput resourceOutput) {
         if (packType == PackType.CLIENT_RESOURCES) {
-            if (!path.endsWith("/")) path += "/";
-            final String finalPath = path;
-            DATA.keySet().stream().filter(Objects::nonNull).filter(loc -> loc.getPath().startsWith(finalPath))
-                    .forEach((id) -> {
-                        IoSupplier<InputStream> resource = this.getResource(packType, id);
-                        if (resource != null) {
-                            resourceOutput.accept(id, resource);
-                        }
-                    });
+            CONTENTS.listResources(namespace, path, resourceOutput);
         }
     }
 
@@ -185,9 +185,9 @@ public class GTDynamicResourcePack implements PackResources {
         return type == PackType.CLIENT_RESOURCES ? CLIENT_DOMAINS : Set.of();
     }
 
-    @Nullable
+    @SuppressWarnings("unchecked")
     @Override
-    public <T> T getMetadataSection(MetadataSectionSerializer<T> metaReader) {
+    public @Nullable <T> T getMetadataSection(MetadataSectionSerializer<T> metaReader) {
         if (metaReader == PackMetadataSection.TYPE) {
             return (T) new PackMetadataSection(Component.literal("GTCEu dynamic assets"),
                     SharedConstants.getCurrentVersion().getPackVersion(PackType.CLIENT_RESOURCES));
@@ -203,29 +203,5 @@ public class GTDynamicResourcePack implements PackResources {
     @Override
     public void close() {
         // NOOP
-    }
-
-    public static ResourceLocation getBlockStateLocation(ResourceLocation blockId) {
-        return ResourceLocation.fromNamespaceAndPath(blockId.getNamespace(),
-                String.join("", "blockstates/", blockId.getPath(), ".json"));
-    }
-
-    public static ResourceLocation getModelLocation(ResourceLocation blockId) {
-        return ResourceLocation.fromNamespaceAndPath(blockId.getNamespace(),
-                String.join("", "models/", blockId.getPath(), ".json"));
-    }
-
-    public static ResourceLocation getItemModelLocation(ResourceLocation itemId) {
-        return ResourceLocation.fromNamespaceAndPath(itemId.getNamespace(),
-                String.join("", "models/item/", itemId.getPath(), ".json"));
-    }
-
-    public static ResourceLocation getTextureLocation(@Nullable String path, ResourceLocation tagId) {
-        if (path == null) {
-            return ResourceLocation.fromNamespaceAndPath(tagId.getNamespace(),
-                    String.join("", "textures/", tagId.getPath(), ".png"));
-        }
-        return ResourceLocation.fromNamespaceAndPath(tagId.getNamespace(),
-                String.join("", "textures/", path, "/", tagId.getPath(), ".png"));
     }
 }

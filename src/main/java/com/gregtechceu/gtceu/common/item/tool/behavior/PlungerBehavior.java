@@ -1,31 +1,33 @@
 package com.gregtechceu.gtceu.common.item.tool.behavior;
 
+import com.gregtechceu.gtceu.api.item.component.IComponentCapability;
 import com.gregtechceu.gtceu.api.item.component.IInteractionItem;
-import com.gregtechceu.gtceu.api.item.component.forge.IComponentCapability;
 import com.gregtechceu.gtceu.api.item.tool.ToolHelper;
 import com.gregtechceu.gtceu.api.item.tool.behavior.IToolBehavior;
 import com.gregtechceu.gtceu.api.item.tool.behavior.ToolBehaviorType;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
-import com.gregtechceu.gtceu.data.tools.GTToolBehaviors;
+import com.gregtechceu.gtceu.common.data.GTToolBehaviors;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
 
-import com.lowdragmc.lowdraglib.side.fluid.FluidTransferHelper;
-
-import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.FluidType;
+import net.neoforged.neoforge.fluids.FluidUtil;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.capability.templates.FluidHandlerItemStack;
 
 import com.mojang.serialization.Codec;
+import io.netty.buffer.ByteBuf;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -34,7 +36,7 @@ public class PlungerBehavior implements IToolBehavior<PlungerBehavior>, ICompone
 
     public static final PlungerBehavior INSTANCE = PlungerBehavior.create();
     public static final Codec<PlungerBehavior> CODEC = Codec.unit(INSTANCE);
-    public static final StreamCodec<RegistryFriendlyByteBuf, PlungerBehavior> STREAM_CODEC = StreamCodec.unit(INSTANCE);
+    public static final StreamCodec<ByteBuf, PlungerBehavior> STREAM_CODEC = StreamCodec.unit(INSTANCE);
 
     protected PlungerBehavior() {/**/}
 
@@ -49,29 +51,28 @@ public class PlungerBehavior implements IToolBehavior<PlungerBehavior>, ICompone
 
     @Override
     public InteractionResult onItemUseFirst(ItemStack stack, UseOnContext context) {
-        if (context.getPlayer() == null || !context.getPlayer().isShiftKeyDown()) {
+        Player player = context.getPlayer();
+        Level level = context.getLevel();
+        if (player != null && !player.isShiftKeyDown()) {
             return InteractionResult.PASS;
         }
 
         IFluidHandler fluidHandler;
-
-        if (context.getLevel()
-                .getBlockEntity(context.getClickedPos()) instanceof IMachineBlockEntity metaMachineBlockEntity) {
-            fluidHandler = metaMachineBlockEntity.getMetaMachine().getFluidTransferCap(context.getClickedFace(), false);
+        if (level.getBlockEntity(context.getClickedPos()) instanceof IMachineBlockEntity mmbe) {
+            fluidHandler = mmbe.getMetaMachine().getFluidHandlerCap(context.getClickedFace(), false);
         } else {
-            fluidHandler = FluidTransferHelper.getFluidTransfer(context.getLevel(), context.getClickedPos(),
-                    context.getClickedFace());
+            fluidHandler = FluidUtil.getFluidHandler(level, context.getClickedPos(), context.getClickedFace())
+                    .orElse(null);
         }
-
         if (fluidHandler == null) {
             return InteractionResult.PASS;
         }
 
-        FluidStack drained = fluidHandler.drain(1000, IFluidHandler.FluidAction.SIMULATE);
+        FluidStack drained = fluidHandler.drain(FluidType.BUCKET_VOLUME, IFluidHandler.FluidAction.SIMULATE);
         if (!drained.isEmpty()) {
-            fluidHandler.drain(1000, IFluidHandler.FluidAction.EXECUTE);
-            ToolHelper.onActionDone(context.getPlayer(), context.getLevel(), context.getHand());
-            return InteractionResult.CONSUME;
+            fluidHandler.drain(FluidType.BUCKET_VOLUME, IFluidHandler.FluidAction.EXECUTE);
+            ToolHelper.onActionDone(player, stack, level, context.getClickLocation());
+            return InteractionResult.sidedSuccess(level.isClientSide);
         }
         return InteractionResult.PASS;
     }
@@ -93,7 +94,7 @@ public class PlungerBehavior implements IToolBehavior<PlungerBehavior>, ICompone
                 (stack, unused) -> new FluidHandlerItemStack(GTDataComponents.FLUID_CONTENT, stack, Integer.MAX_VALUE) {
 
                     @Override
-                    public int fill(FluidStack resource, FluidAction action) {
+                    public int fill(@NotNull FluidStack resource, @NotNull FluidAction action) {
                         int result = resource.getAmount();
                         if (result > 0) {
                             ToolHelper.damageItem(this.getContainer(), null);

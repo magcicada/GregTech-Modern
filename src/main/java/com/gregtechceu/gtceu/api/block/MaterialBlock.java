@@ -1,16 +1,16 @@
 package com.gregtechceu.gtceu.api.block;
 
+import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.blockentity.PipeBlockEntity;
+import com.gregtechceu.gtceu.api.data.chemical.material.Material;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
 import com.gregtechceu.gtceu.api.item.PipeBlockItem;
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
 import com.gregtechceu.gtceu.api.item.tool.ToolHelper;
-import com.gregtechceu.gtceu.api.material.material.Material;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
 import com.gregtechceu.gtceu.client.renderer.block.MaterialBlockRenderer;
+import com.gregtechceu.gtceu.common.data.GTMaterials;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.data.recipe.VanillaRecipeHelper;
-
-import com.lowdragmc.lowdraglib.Platform;
 
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.client.color.block.BlockColor;
@@ -55,14 +55,9 @@ import java.util.Set;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 
-/**
- * @author KilaBash
- * @date 2023/2/27
- * @implNote MaterialBlock
- */
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
-public class MaterialBlock extends AppearanceBlock {
+public class MaterialBlock extends Block {
 
     public final TagPrefix tagPrefix;
     public final Material material;
@@ -71,7 +66,7 @@ public class MaterialBlock extends AppearanceBlock {
         super(properties);
         this.material = material;
         this.tagPrefix = tagPrefix;
-        if (registerModel && Platform.isClient()) {
+        if (registerModel && GTCEu.isClientSide()) {
             MaterialBlockRenderer.create(this, tagPrefix.materialIconType(), material.getMaterialIconSet());
         }
     }
@@ -101,7 +96,6 @@ public class MaterialBlock extends AppearanceBlock {
     }
 
     /** Start falling ore stuff */
-    @SuppressWarnings("deprecation")
     @Override
     public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean isMoving) {
         if (TagPrefix.ORES.containsKey(this.tagPrefix) && TagPrefix.ORES.get(tagPrefix).isSand() &&
@@ -110,7 +104,6 @@ public class MaterialBlock extends AppearanceBlock {
         }
     }
 
-    @SuppressWarnings("deprecation")
     @Override
     public BlockState updateShape(BlockState state, Direction direction, BlockState neighborState, LevelAccessor level,
                                   BlockPos currentPos, BlockPos neighborPos) {
@@ -121,7 +114,6 @@ public class MaterialBlock extends AppearanceBlock {
         return super.updateShape(state, direction, neighborState, level, currentPos, neighborPos);
     }
 
-    @SuppressWarnings("deprecation")
     @Override
     public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
         if (!FallingBlock.isFree(level.getBlockState(pos.below())) || pos.getY() < level.getMinBuildHeight()) {
@@ -193,7 +185,7 @@ public class MaterialBlock extends AppearanceBlock {
                 continue;
             }
             BlockEntity te = level.getBlockEntity(blockPos);
-            if (te instanceof PipeBlockEntity<?, ?> pbe && pbe.getFrameMaterial() != null) {
+            if (te instanceof PipeBlockEntity<?, ?> pbe && !pbe.getFrameMaterial().isNull()) {
                 blockPos.move(Direction.UP);
                 continue;
             }
@@ -202,7 +194,7 @@ public class MaterialBlock extends AppearanceBlock {
                 if (!player.isCreative())
                     stack.shrink(1);
                 return ItemInteractionResult.SUCCESS;
-            } else if (te instanceof PipeBlockEntity<?, ?> pbe && pbe.getFrameMaterial() == null) {
+            } else if (te instanceof PipeBlockEntity<?, ?> pbe && pbe.getFrameMaterial().isNull()) {
                 pbe.setFrameMaterial(frameBlock.material);
 
                 if (!player.isCreative())
@@ -231,8 +223,8 @@ public class MaterialBlock extends AppearanceBlock {
         BlockEntity te = level.getBlockEntity(pos);
         if (te instanceof PipeBlockEntity<?, ?> pipeTile) {
             Material mat = pipeTile.getFrameMaterial();
-            if (mat != null) {
-                pipeTile.setFrameMaterial(null);
+            if (!mat.isNull()) {
+                pipeTile.setFrameMaterial(GTMaterials.NULL);
                 Block.popResource(level, pos, this.asItem().getDefaultInstance());
                 ToolHelper.damageItem(stack, player);
                 ToolHelper.playToolSound(GTToolType.CROWBAR, (ServerPlayer) player);
@@ -244,7 +236,8 @@ public class MaterialBlock extends AppearanceBlock {
 
     @Override
     public boolean canBeReplaced(BlockState state, BlockPlaceContext useContext) {
-        if (this.tagPrefix == TagPrefix.frameGt && useContext.getItemInHand().getItem() instanceof PipeBlockItem)
+        if (this.tagPrefix == TagPrefix.frameGt && useContext.getItemInHand().getItem() instanceof PipeBlockItem &&
+                !useContext.getPlayer().isShiftKeyDown())
             return true;
         return super.canBeReplaced(state, useContext);
     }
@@ -299,9 +292,7 @@ public class MaterialBlock extends AppearanceBlock {
             if (livingEntity.horizontalCollision) {
                 d2 = 0.3;
             }
-
             deltaMovement = new Vec3(d0, d2, d1);
-
             entity.setDeltaMovement(deltaMovement);
         }
     }

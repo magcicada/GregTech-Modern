@@ -4,14 +4,15 @@ import com.gregtechceu.gtceu.api.capability.IHPCAComponentHatch;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.feature.IMachineModifyDrops;
 import com.gregtechceu.gtceu.api.machine.multiblock.part.MultiblockPartMachine;
-import com.gregtechceu.gtceu.data.block.GTBlocks;
+import com.gregtechceu.gtceu.api.machine.property.GTMachineModelProperties;
+import com.gregtechceu.gtceu.client.model.machine.MachineRenderState;
+import com.gregtechceu.gtceu.common.data.GTBlocks;
 
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.annotation.RequireRerender;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -19,10 +20,6 @@ import net.minecraft.world.phys.BlockHitResult;
 
 import java.util.List;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
 public abstract class HPCAComponentPartMachine extends MultiblockPartMachine
                                                implements IHPCAComponentHatch, IMachineModifyDrops {
 
@@ -67,11 +64,6 @@ public abstract class HPCAComponentPartMachine extends MultiblockPartMachine
     }
 
     @Override
-    public boolean replacePartModelWhenFormed() {
-        return false;
-    }
-
-    @Override
     public boolean isDamaged() {
         return canBeDamaged() && damaged;
     }
@@ -82,11 +74,23 @@ public abstract class HPCAComponentPartMachine extends MultiblockPartMachine
         if (this.damaged != damaged) {
             this.damaged = damaged;
             markDirty();
+
+            MachineRenderState state = getRenderState();
+            if (state.hasProperty(GTMachineModelProperties.IS_HPCA_PART_DAMAGED)) {
+                setRenderState(state.setValue(GTMachineModelProperties.IS_HPCA_PART_DAMAGED, damaged));
+            }
+        }
+    }
+
+    public void setActive(boolean active) {
+        MachineRenderState state = getRenderState();
+        if (state.hasProperty(GTMachineModelProperties.IS_ACTIVE)) {
+            setRenderState(state.setValue(GTMachineModelProperties.IS_ACTIVE, active));
         }
     }
 
     @Override
-    public void onDrops(List<ItemStack> drops, Player entity) {
+    public void onDrops(List<ItemStack> drops) {
         for (int i = 0; i < drops.size(); ++i) {
             ItemStack drop = drops.get(i);
             if (drop.getItem() == this.getDefinition().getItem()) {

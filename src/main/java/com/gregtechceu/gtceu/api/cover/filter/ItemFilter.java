@@ -2,7 +2,6 @@ package com.gregtechceu.gtceu.api.cover.filter;
 
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
 
@@ -13,11 +12,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-/**
- * @author KilaBash
- * @date 2023/3/13
- * @implNote ItemFilter
- */
 public interface ItemFilter extends Filter<ItemStack, ItemFilter> {
 
     Map<ItemLike, Function<ItemStack, ItemFilter>> FILTERS = new HashMap<>();
@@ -59,11 +53,6 @@ public interface ItemFilter extends Filter<ItemStack, ItemFilter> {
 
         @Override
         public WidgetGroup openConfigurator(int x, int y) {
-            throw new NotImplementedException("Not available for empty item filter");
-        }
-
-        @Override
-        public CompoundTag saveFilter() {
             throw new NotImplementedException("Not available for empty item filter");
         }
 

@@ -1,15 +1,15 @@
 package com.gregtechceu.gtceu.api.capability;
 
-import com.gregtechceu.gtceu.api.fluid.FluidState;
-import com.gregtechceu.gtceu.api.fluid.attribute.FluidAttribute;
-import com.gregtechceu.gtceu.api.fluid.attribute.IAttributedFluid;
+import com.gregtechceu.gtceu.api.fluids.FluidState;
+import com.gregtechceu.gtceu.api.fluids.attribute.FluidAttribute;
+import com.gregtechceu.gtceu.api.fluids.attribute.IAttributedFluid;
+import com.gregtechceu.gtceu.utils.FormattingUtil;
 import com.gregtechceu.gtceu.utils.GTUtil;
-
-import com.lowdragmc.lowdraglib.side.fluid.FluidHelper;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.FluidType;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.UnmodifiableView;
@@ -18,14 +18,15 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Predicate;
 
-import static com.gregtechceu.gtceu.api.fluid.FluidConstants.CRYOGENIC_FLUID_THRESHOLD;
+import static com.gregtechceu.gtceu.api.fluids.FluidConstants.CRYOGENIC_FLUID_THRESHOLD;
 
 public interface IPropertyFluidFilter extends Predicate<FluidStack> {
 
     @Override
     default boolean test(@NotNull FluidStack stack) {
         Fluid fluid = stack.getFluid();
-        if (FluidHelper.getTemperature(stack) < CRYOGENIC_FLUID_THRESHOLD && !isCryoProof()) return false;
+        FluidType fluidType = fluid.getFluidType();
+        if (fluidType.getTemperature() < CRYOGENIC_FLUID_THRESHOLD && !isCryoProof()) return false;
 
         if (fluid instanceof IAttributedFluid attributedFluid) {
             FluidState state = attributedFluid.getState();
@@ -40,7 +41,7 @@ public interface IPropertyFluidFilter extends Predicate<FluidStack> {
             // plasma ignores temperature requirements
             if (state == FluidState.PLASMA) return true;
         } else {
-            if (FluidHelper.isLighterThanAir(stack) && !canContain(FluidState.GAS)) {
+            if (fluidType.isLighterThanAir() && !canContain(FluidState.GAS)) {
                 return false;
             }
             if (!canContain(FluidState.LIQUID)) {
@@ -48,7 +49,7 @@ public interface IPropertyFluidFilter extends Predicate<FluidStack> {
             }
         }
 
-        return FluidHelper.getTemperature(stack) <= getMaxFluidTemperature();
+        return fluidType.getTemperature() <= getMaxFluidTemperature();
     }
 
     /**
@@ -85,12 +86,13 @@ public interface IPropertyFluidFilter extends Predicate<FluidStack> {
     default void appendTooltips(@NotNull List<Component> tooltip, boolean showToolsInfo, boolean showTemperatureInfo) {
         if (GTUtil.isShiftDown()) {
             if (showTemperatureInfo)
-                tooltip.add(Component.translatable("gtceu.fluid_pipe.max_temperature", getMaxFluidTemperature()));
+                tooltip.add(Component.translatable("gtceu.fluid_pipe.max_temperature",
+                        FormattingUtil.formatTemperature(getMaxFluidTemperature())));
             if (isGasProof()) tooltip.add(Component.translatable("gtceu.fluid_pipe.gas_proof"));
             else tooltip.add(Component.translatable("gtceu.fluid_pipe.not_gas_proof"));
             if (isPlasmaProof()) tooltip.add(Component.translatable("gtceu.fluid_pipe.plasma_proof"));
             if (isCryoProof()) tooltip.add(Component.translatable("gtceu.fluid_pipe.cryo_proof"));
-            getContainedAttributes().forEach(a -> a.appendContainerTooltips(tooltip));
+            getContainedAttributes().forEach(a -> a.appendContainerTooltips(tooltip::add));
         } else if (isGasProof() || isCryoProof() || isPlasmaProof() || !getContainedAttributes().isEmpty()) {
             if (showToolsInfo) {
                 tooltip.add(Component.translatable("gtceu.tooltip.tool_fluid_hold_shift"));

@@ -1,21 +1,17 @@
 package com.gregtechceu.gtceu.common.item.tool.behavior;
 
-import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.item.datacomponents.AoESymmetrical;
 import com.gregtechceu.gtceu.api.item.tool.ToolHelper;
 import com.gregtechceu.gtceu.api.item.tool.behavior.IToolBehavior;
 import com.gregtechceu.gtceu.api.item.tool.behavior.ToolBehaviorType;
-import com.gregtechceu.gtceu.data.tools.GTToolBehaviors;
+import com.gregtechceu.gtceu.common.data.GTToolBehaviors;
+import com.gregtechceu.gtceu.common.data.item.GTItemAbilities;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.NonNullList;
-import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -26,111 +22,96 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.LevelEvent;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
+import net.neoforged.neoforge.common.ItemAbility;
 
-import com.google.common.collect.ImmutableSet;
 import com.mojang.serialization.Codec;
+import io.netty.buffer.ByteBuf;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Set;
 
 public class HarvestCropsBehavior implements IToolBehavior<HarvestCropsBehavior> {
 
     public static final HarvestCropsBehavior INSTANCE = new HarvestCropsBehavior();
     public static final Codec<HarvestCropsBehavior> CODEC = Codec.unit(INSTANCE);
-    public static final StreamCodec<RegistryFriendlyByteBuf, HarvestCropsBehavior> STREAM_CODEC = StreamCodec
-            .unit(INSTANCE);
+    public static final StreamCodec<ByteBuf, HarvestCropsBehavior> STREAM_CODEC = StreamCodec.unit(INSTANCE);
 
     protected HarvestCropsBehavior() {/**/}
+
+    @Override
+    public boolean canPerformAction(ItemStack stack, ItemAbility action) {
+        return action == GTItemAbilities.HOE_HARVEST;
+    }
 
     @NotNull
     @Override
     public InteractionResult onItemUse(UseOnContext context) {
-        if (context.getLevel().isClientSide) {
-            return InteractionResult.PASS;
-        }
-
+        Level level = context.getLevel();
         Player player = context.getPlayer();
         BlockPos pos = context.getClickedPos();
-        InteractionHand hand = context.getHand();
-
-        ItemStack stack = player.getItemInHand(hand);
-
+        ItemStack stack = context.getItemInHand();
         AoESymmetrical aoeDefinition = ToolHelper.getAoEDefinition(stack);
 
-        Set<BlockPos> blocks;
-
-        if (aoeDefinition == AoESymmetrical.none()) {
-            blocks = ImmutableSet.of(pos);
+        List<BlockPos> blocks;
+        if (aoeDefinition.isZero()) {
+            blocks = List.of(pos);
         } else {
-            HitResult rayTraceResult = ToolHelper.getPlayerDefaultRaytrace(player);
-
-            if (rayTraceResult == null) return InteractionResult.PASS;
-            if (rayTraceResult.getType() != HitResult.Type.BLOCK) return InteractionResult.PASS;
-            if (!(rayTraceResult instanceof BlockHitResult blockHitResult))
-                return InteractionResult.PASS;
-            if (blockHitResult.getDirection() == null)
-                return InteractionResult.PASS;
-
-            blocks = ToolHelper.iterateAoE(stack, aoeDefinition, player.level(), player, rayTraceResult,
-                    HarvestCropsBehavior::isBlockCrops);
-            if (isBlockCrops(stack, context.getLevel(), player, blockHitResult.getBlockPos(), context)) {
-                blocks.add(blockHitResult.getBlockPos());
+            blocks = ToolHelper.iterateAoE(aoeDefinition, HarvestCropsBehavior::isBlockCrops, context);
+            if (isBlockCrops(context)) {
+                blocks.addFirst(context.getClickedPos());
             }
         }
 
         boolean harvested = false;
         for (BlockPos blockPos : blocks) {
-            if (harvestBlockRoutine(stack, blockPos, player)) {
-                harvested = true;
-            }
+            UseOnContext posContext = new UseOnContext(level, player, context.getHand(), stack,
+                    context.getHitResult().withPosition(blockPos));
+            harvested |= harvestBlockRoutine(blockPos, posContext);
+            if (stack.isEmpty()) break;
         }
 
-        return harvested ? InteractionResult.SUCCESS : InteractionResult.PASS;
+        return harvested ? InteractionResult.sidedSuccess(level.isClientSide) : InteractionResult.PASS;
     }
 
-    private static boolean isBlockCrops(ItemStack stack, Level world, Player player, BlockPos pos,
-                                        @Nullable UseOnContext context) {
-        if (world.getBlockState(pos.above()).isAir()) {
-            Block block = world.getBlockState(pos).getBlock();
+    private static boolean isBlockCrops(UseOnContext context) {
+        Level level = context.getLevel();
+        BlockPos pos = context.getClickedPos();
+        if (level.getBlockState(pos.above()).isAir()) {
+            Block block = level.getBlockState(pos).getBlock();
             return block instanceof CropBlock;
         }
         return false;
     }
 
-    private static boolean harvestBlockRoutine(ItemStack stack, BlockPos pos, Player player) {
-        BlockState blockState = player.level().getBlockState(pos);
-        Block block = blockState.getBlock();
-        CropBlock blockCrops = (CropBlock) block;
-        if (blockCrops.isMaxAge(blockState)) {
-            NonNullList<ItemStack> drops = NonNullList.create();
-            drops.addAll(Block.getDrops(blockState, (ServerLevel) player.level(), pos, null));
-            dropListOfItems(player.level(), pos, drops);
-            player.level().levelEvent(LevelEvent.PARTICLES_DESTROY_BLOCK, pos, Block.getId(blockState));
-            player.level().setBlock(pos, blockCrops.getStateForAge(0), Block.UPDATE_ALL);
-            if (!player.isCreative()) {
-                ToolHelper.damageItem(stack, player);
+    private static boolean harvestBlockRoutine(BlockPos pos, UseOnContext context) {
+        Level level = context.getLevel();
+        ItemStack stack = context.getItemInHand();
+        Player player = context.getPlayer();
+
+        BlockState blockState = level.getBlockState(pos);
+        if (!(blockState.getBlock() instanceof CropBlock cropBlock)) return false;
+
+        ItemStack seed = blockState.getCloneItemStack(context.getHitResult().withPosition(pos), level, pos, player);
+        if (cropBlock.isMaxAge(blockState)) {
+            if (!level.isClientSide) {
+                var drops = Block.getDrops(blockState, (ServerLevel) level, pos, null);
+                boolean removedSeed = false;
+                for (ItemStack drop : drops) {
+                    if (!removedSeed && ItemStack.isSameItemSameComponents(drop, seed)) {
+                        drop.shrink(1);
+                        removedSeed = true;
+                        if (drop.isEmpty()) continue;
+                    }
+                    Block.popResource(level, pos, drop);
+                }
             }
+            level.levelEvent(LevelEvent.PARTICLES_DESTROY_BLOCK, pos, Block.getId(blockState));
+            level.setBlock(pos, cropBlock.getStateForAge(0), Block.UPDATE_ALL_IMMEDIATE);
+            ToolHelper.damageItem(stack, player);
             return true;
         }
 
         return false;
-    }
-
-    private static void dropListOfItems(Level world, BlockPos pos, List<ItemStack> drops) {
-        for (ItemStack stack : drops) {
-            float f = 0.7F;
-            double offX = (GTValues.RNG.nextFloat() * f) + (1.0F - f) * 0.5D;
-            double offY = (GTValues.RNG.nextFloat() * f) + (1.0F - f) * 0.5D;
-            double offZ = (GTValues.RNG.nextFloat() * f) + (1.0F - f) * 0.5D;
-            ItemEntity entityItem = new ItemEntity(world, pos.getX() + offX, pos.getY() + offY, pos.getZ() + offZ,
-                    stack);
-            entityItem.setDefaultPickUpDelay();
-            world.addFreshEntity(entityItem);
-        }
     }
 
     @Override

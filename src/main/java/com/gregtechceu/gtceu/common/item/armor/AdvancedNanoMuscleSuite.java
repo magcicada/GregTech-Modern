@@ -6,8 +6,8 @@ import com.gregtechceu.gtceu.api.capability.IElectricItem;
 import com.gregtechceu.gtceu.api.item.armor.ArmorComponentItem;
 import com.gregtechceu.gtceu.api.item.armor.ArmorUtils;
 import com.gregtechceu.gtceu.api.item.datacomponents.GTArmor;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
-import com.gregtechceu.gtceu.utils.input.KeyBind;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
+import com.gregtechceu.gtceu.utils.input.SyncedKeyMappings;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.NonNullList;
@@ -27,69 +27,71 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
 import com.mojang.datafixers.util.Pair;
+import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Iterator;
 import java.util.List;
 
 public class AdvancedNanoMuscleSuite extends NanoMuscleSuite implements IJetpack {
 
     // A replacement for checking the current world time, to get around the gamerule that stops it
     private long timer = 0L;
-    private List<Pair<NonNullList<ItemStack>, List<Integer>>> inventoryIndexMap;
+    private List<Pair<NonNullList<ItemStack>, IntList>> inventoryIndexMap;
 
     public AdvancedNanoMuscleSuite(int energyPerUse, long capacity, int tier) {
         super(ArmorItem.Type.CHESTPLATE, energyPerUse, capacity, tier);
     }
 
     @Override
-    public void onArmorTick(Level world, Player player, @NotNull ItemStack item) {
-        IElectricItem cont = GTCapabilityHelper.getElectricItem(item);
+    public void onArmorTick(Level level, Player player, @NotNull ItemStack stack) {
+        IElectricItem cont = GTCapabilityHelper.getElectricItem(stack);
         if (cont == null) {
             return;
         }
 
-        GTArmor data = item.getOrDefault(GTDataComponents.ARMOR_DATA, new GTArmor());
+        GTArmor.Mutable data = stack.getOrDefault(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY).toMutable();
         boolean hoverMode = data.hover();
         byte toggleTimer = data.toggleTimer();
         boolean canShare = data.canShare();
+        boolean jetpackEnabled = data.enabled();
 
-        if (toggleTimer == 0 && KeyBind.ARMOR_HOVER.isKeyDown(player)) {
-            hoverMode = !hoverMode;
-            toggleTimer = 5;
-            final boolean finalHoverMode = hoverMode;
-            item.update(GTDataComponents.ARMOR_DATA, new GTArmor(), data1 -> data1.setHover(finalHoverMode));
-            if (!world.isClientSide) {
-                if (hoverMode)
-                    player.displayClientMessage(Component.translatable("metaarmor.jetpack.hover.enable"), true);
-                else
-                    player.displayClientMessage(Component.translatable("metaarmor.jetpack.hover.disable"), true);
+        String messageKey = null;
+        if (toggleTimer == 0) {
+            if (SyncedKeyMappings.JETPACK_ENABLE.isKeyDown(player)) {
+                jetpackEnabled = !jetpackEnabled;
+                messageKey = "metaarmor.jetpack.flight." + (jetpackEnabled ? "enable" : "disable");
+                data.enabled(jetpackEnabled);
+            } else if (SyncedKeyMappings.ARMOR_HOVER.isKeyDown(player)) {
+                hoverMode = !hoverMode;
+                messageKey = "metaarmor.jetpack.hover." + (hoverMode ? "enable" : "disable");
+                data.hover(hoverMode);
+            } else if (SyncedKeyMappings.ARMOR_CHARGING.isKeyDown(player)) {
+                canShare = !canShare;
+                if (canShare && cont.getCharge() == 0) { // Only allow for charging to be enabled if charge is nonzero
+                    messageKey = "metaarmor.nms.share.error";
+                    canShare = false;
+                } else {
+                    messageKey = "metaarmor.nms.share." + (canShare ? "enable" : "disable");
+                }
+                data.canShare(canShare);
+            }
+
+            if (messageKey != null) {
+                toggleTimer = 5;
+                if (!level.isClientSide) player.displayClientMessage(Component.translatable(messageKey), true);
             }
         }
 
-        if (toggleTimer == 0 && KeyBind.ARMOR_CHARGING.isKeyDown(player)) {
-            canShare = !canShare;
-            toggleTimer = 5;
-            if (!world.isClientSide) {
-                if (canShare && cont.getCharge() == 0)
-                    player.displayClientMessage(Component.translatable("metaarmor.nms.share.error"), true);
-                else if (canShare)
-                    player.displayClientMessage(Component.translatable("metaarmor.nms.share.enable"), true);
-                else
-                    player.displayClientMessage(Component.translatable("metaarmor.nms.share.disable"), true);
-            }
+        if (toggleTimer > 0) toggleTimer--;
+        data.toggleTimer(toggleTimer);
 
-            // Only allow for charging to be enabled if charge is nonzero
-            canShare = canShare && (cont.getCharge() != 0);
-            final boolean finalCanShare = canShare;
-            item.update(GTDataComponents.ARMOR_DATA, new GTArmor(), data1 -> data1.setCanShare(finalCanShare));
-        }
+        stack.set(GTDataComponents.ARMOR_DATA, data.toImmutable());
 
-        performFlying(player, hoverMode, item);
+        performFlying(player, jetpackEnabled, hoverMode, stack);
 
         // Charging mechanics
-        if (canShare && !world.isClientSide) {
+        if (canShare && !level.isClientSide) {
             // Check for new things to charge every 5 seconds
             if (timer % 100 == 0)
                 inventoryIndexMap = ArmorUtils.getChargeableItem(player, cont.getTier());
@@ -97,10 +99,10 @@ public class AdvancedNanoMuscleSuite extends NanoMuscleSuite implements IJetpack
             if (inventoryIndexMap != null && !inventoryIndexMap.isEmpty()) {
                 // Charge all inventory slots
                 for (int i = 0; i < inventoryIndexMap.size(); i++) {
-                    Pair<NonNullList<ItemStack>, List<Integer>> inventoryMap = inventoryIndexMap.get(i);
-                    Iterator<Integer> inventoryIterator = inventoryMap.getSecond().iterator();
+                    Pair<NonNullList<ItemStack>, IntList> inventoryMap = inventoryIndexMap.get(i);
+                    var inventoryIterator = inventoryMap.getSecond().iterator();
                     while (inventoryIterator.hasNext()) {
-                        int slot = inventoryIterator.next();
+                        int slot = inventoryIterator.nextInt();
                         IElectricItem chargable = GTCapabilityHelper.getElectricItem(inventoryMap.getFirst().get(slot));
 
                         // Safety check the null, it should not actually happen. Also don't try and charge itself
@@ -130,14 +132,6 @@ public class AdvancedNanoMuscleSuite extends NanoMuscleSuite implements IJetpack
             }
         }
 
-        if (toggleTimer > 0) toggleTimer--;
-
-        final boolean finalCanShare = canShare;
-        final boolean finalHoverMode = hoverMode;
-        final byte finalToggleTimer = toggleTimer;
-        item.update(GTDataComponents.ARMOR_DATA, new GTArmor(),
-                data1 -> data1.setCanShare(finalCanShare).setHover(finalHoverMode).setToggleTimer(finalToggleTimer));
-
         timer++;
         if (timer == Long.MAX_VALUE)
             timer = 0;
@@ -145,16 +139,21 @@ public class AdvancedNanoMuscleSuite extends NanoMuscleSuite implements IJetpack
 
     @Override
     public void addInfo(ItemStack itemStack, List<Component> lines) {
-        GTArmor data = itemStack.getOrDefault(GTDataComponents.ARMOR_DATA, new GTArmor());
-        Component state = data.canShare() ? Component.translatable("metaarmor.hud.status.enabled") :
+        super.addInfo(itemStack, lines);
+        GTArmor data = itemStack.getOrDefault(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY);
+
+        Component state = data.enabled() ? Component.translatable("metaarmor.hud.status.enabled") :
+                Component.translatable("metaarmor.hud.status.disabled");
+        lines.add(Component.translatable("metaarmor.hud.engine_enabled", state));
+
+        state = data.canShare() ? Component.translatable("metaarmor.hud.status.enabled") :
                 Component.translatable("metaarmor.hud.status.disabled");
         lines.add(Component.translatable("metaarmor.energy_share.tooltip", state));
         lines.add(Component.translatable("metaarmor.energy_share.tooltip.guide"));
 
-        Component status = data.hover() ? Component.translatable("metaarmor.hud.status.enabled") :
+        state = data.hover() ? Component.translatable("metaarmor.hud.status.enabled") :
                 Component.translatable("metaarmor.hud.status.disabled");
-        lines.add(Component.translatable("metaarmor.hud.hover_mode", status));
-        super.addInfo(itemStack, lines);
+        lines.add(Component.translatable("metaarmor.hud.hover_mode", state));
     }
 
     @Override
@@ -162,7 +161,7 @@ public class AdvancedNanoMuscleSuite extends NanoMuscleSuite implements IJetpack
         ItemStack armor = player.getItemInHand(hand);
 
         if (armor.getItem() instanceof ArmorComponentItem && player.isShiftKeyDown()) {
-            GTArmor data = armor.getOrDefault(GTDataComponents.ARMOR_DATA, new GTArmor());
+            GTArmor data = armor.getOrDefault(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY);
             boolean canShare = data.canShare();
             IElectricItem cont = GTCapabilityHelper.getElectricItem(armor);
             if (cont == null) {
@@ -182,7 +181,8 @@ public class AdvancedNanoMuscleSuite extends NanoMuscleSuite implements IJetpack
 
             canShare = canShare && (cont.getCharge() != 0);
             final boolean finalCanShare = canShare;
-            armor.update(GTDataComponents.ARMOR_DATA, new GTArmor(), data1 -> data1.setCanShare(finalCanShare));
+            armor.update(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY,
+                    data1 -> data1.setCanShare(finalCanShare));
             return InteractionResultHolder.success(armor);
         }
 
@@ -198,21 +198,29 @@ public class AdvancedNanoMuscleSuite extends NanoMuscleSuite implements IJetpack
         if (!cont.canUse(energyPerUse)) return;
         GTArmor data = item.get(GTDataComponents.ARMOR_DATA);
         if (data != null) {
-            String status = data.canShare() ? "metaarmor.hud.status.enabled" :
-                    "metaarmor.hud.status.disabled";
-            this.HUD.newString(Component.translatable("mataarmor.hud.supply_mode", Component.translatable(status)));
+            Component status = data.enabled() ?
+                    Component.translatable("metaarmor.hud.status.enabled") :
+                    Component.translatable("metaarmor.hud.status.disabled");
+            Component result = Component.translatable("metaarmor.hud.engine_enabled", status);
+            this.HUD.newString(result);
 
-            status = data.hover() ? "metaarmor.hud.status.enabled" :
-                    "metaarmor.hud.status.disabled";
-            this.HUD.newString(Component.translatable("metaarmor.hud.hover_mode", Component.translatable(status)));
+            status = data.canShare() ?
+                    Component.translatable("metaarmor.hud.status.enabled") :
+                    Component.translatable("metaarmor.hud.status.disabled");
+            this.HUD.newString(Component.translatable("mataarmor.hud.supply_mode", status));
+
+            status = data.hover() ?
+                    Component.translatable("metaarmor.hud.status.enabled") :
+                    Component.translatable("metaarmor.hud.status.disabled");
+            this.HUD.newString(Component.translatable("metaarmor.hud.hover_mode", status));
         }
         this.HUD.draw(guiGraphics);
         this.HUD.reset();
     }
 
     @Override
-    public ResourceLocation getArmorTexture(ItemStack stack, Entity entity, EquipmentSlot slot,
-                                            ArmorMaterial.Layer layer) {
+    public ResourceLocation getArmorTexture(ItemStack stack, Entity entity,
+                                            EquipmentSlot slot, ArmorMaterial.Layer layer) {
         return GTCEu.id("textures/armor/advanced_nano_muscle_suite_1.png");
     }
 

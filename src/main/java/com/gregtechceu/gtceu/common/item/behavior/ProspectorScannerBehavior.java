@@ -8,8 +8,8 @@ import com.gregtechceu.gtceu.api.gui.widget.ProspectingMapWidget;
 import com.gregtechceu.gtceu.api.item.component.IAddInformation;
 import com.gregtechceu.gtceu.api.item.component.IInteractionItem;
 import com.gregtechceu.gtceu.api.item.component.IItemUIFactory;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
 import com.gregtechceu.gtceu.config.ConfigHolder;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
 
 import com.lowdragmc.lowdraglib.gui.factory.HeldItemUIFactory;
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
@@ -33,11 +33,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * @author KilaBash
- * @date 2023/7/10
- * @implNote ProspectorScannerBehavior
- */
 public class ProspectorScannerBehavior implements IItemUIFactory, IInteractionItem, IAddInformation {
 
     private final int radius;
@@ -74,25 +69,24 @@ public class ProspectorScannerBehavior implements IItemUIFactory, IInteractionIt
     @Override
     public InteractionResultHolder<ItemStack> use(ItemStack item, Level level, Player player,
                                                   InteractionHand usedHand) {
-        ItemStack heldItem = player.getItemInHand(usedHand);
         if (player.isShiftKeyDown() && modes.length > 1) {
             if (!level.isClientSide) {
-                setNextMode(heldItem);
-                var mode = getMode(heldItem);
+                setNextMode(item);
+                var mode = getMode(item);
                 player.sendSystemMessage(Component.translatable(mode.unlocalizedName));
             }
-            return InteractionResultHolder.success(heldItem);
+            return InteractionResultHolder.success(item);
         }
-        if (!player.isCreative() && !drainEnergy(heldItem, true)) {
+        if (!player.isCreative() && !drainEnergy(item, true)) {
             player.sendSystemMessage(Component.translatable("behavior.prospector.not_enough_energy"));
-            return InteractionResultHolder.success(heldItem);
+            return InteractionResultHolder.success(item);
         }
         return IItemUIFactory.super.use(item, level, player, usedHand);
     }
 
     @Override
     public ModularUI createUI(HeldItemUIFactory.HeldItemHolder holder, Player entityPlayer) {
-        var mode = getMode(entityPlayer.getItemInHand(InteractionHand.MAIN_HAND));
+        var mode = getMode(holder.getHeld());
         var map = new ProspectingMapWidget(4, 4, 332 - 8, 200 - 8, radius, mode, 1);
         return new ModularUI(332, 200, holder, entityPlayer)
                 .background(GuiTextures.BACKGROUND)

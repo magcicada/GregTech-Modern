@@ -1,8 +1,5 @@
 {
-  "values": [
-    {
-      "id": "gtceu:diamond_lens",
-      "required": false
-    }
-  ]
+    "values": [
+        "gtceu:diamond_lens"
+    ]
 }

@@ -10,7 +10,10 @@ import com.gregtechceu.gtceu.api.item.tool.GTToolType;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.TieredEnergyMachine;
+import com.gregtechceu.gtceu.api.machine.property.GTMachineModelProperties;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableEnergyContainer;
+import com.gregtechceu.gtceu.common.data.item.GTItemAbilities;
+import com.gregtechceu.gtceu.common.data.machines.GTMachineUtils;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.utils.GTUtil;
 
@@ -27,9 +30,12 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.phys.BlockHitResult;
 
 import it.unimi.dsi.fastutil.objects.Object2BooleanFunction;
@@ -43,14 +49,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.gregtechceu.gtceu.data.machine.GTMachines.defaultTankSizeFunction;
-
-/**
- * @author h3tr
- * @date 2024/2/08
- * @implNote WorldAcceleratorMachine
- */
-
 public class WorldAcceleratorMachine extends TieredEnergyMachine implements IControllable {
 
     private static final Map<String, Class<?>> blacklistedClasses = new Object2ObjectOpenHashMap<>();
@@ -59,6 +57,8 @@ public class WorldAcceleratorMachine extends TieredEnergyMachine implements ICon
 
     // Hard-coded blacklist for blockentities
     private static final List<String> blockEntityClassNamesBlackList = new ArrayList<>();
+
+    public static final BooleanProperty RANDOM_TICK_PROPERTY = GTMachineModelProperties.IS_RANDOM_TICK_MODE;
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             WorldAcceleratorMachine.class, TieredEnergyMachine.MANAGED_FIELD_HOLDER);
@@ -87,7 +87,7 @@ public class WorldAcceleratorMachine extends TieredEnergyMachine implements ICon
     private TickableSubscription tickSubs;
 
     public WorldAcceleratorMachine(IMachineBlockEntity holder, int tier, Object... args) {
-        super(holder, tier, defaultTankSizeFunction, args);
+        super(holder, tier, GTMachineUtils.defaultTankSizeFunction, args);
         this.speed = (int) Math.pow(2, tier);
         this.successLimit = SUCCESS_LIMITS[tier - 1];
         this.randRange = (getTier() << 1) + 1;
@@ -108,10 +108,12 @@ public class WorldAcceleratorMachine extends TieredEnergyMachine implements ICon
         if (isWorkingEnabled && drainEnergy(true)) {
             tickSubs = subscribeServerTick(tickSubs, this::update);
             active = true;
+            setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_ACTIVE, true));
         } else if (tickSubs != null) {
             tickSubs.unsubscribe();
             tickSubs = null;
             active = false;
+            setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_ACTIVE, false));
         }
     }
 
@@ -216,19 +218,25 @@ public class WorldAcceleratorMachine extends TieredEnergyMachine implements ICon
 
     public void setWorkingEnabled(boolean workingEnabled) {
         isWorkingEnabled = workingEnabled;
+        setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_WORKING_ENABLED, isWorkingEnabled));
         updateSubscription();
     }
 
     @Override
-    public ResourceTexture sideTips(Player player, Set<GTToolType> toolTypes, Direction side) {
+    public ResourceTexture sideTips(Player player, BlockPos pos, BlockState state, Set<GTToolType> toolTypes,
+                                    ItemStack held, Direction side) {
         if (toolTypes.contains(GTToolType.SOFT_MALLET)) {
             return isWorkingEnabled ? GuiTextures.TOOL_PAUSE : GuiTextures.TOOL_START;
         }
-        return super.sideTips(player, toolTypes, side);
+        return super.sideTips(player, pos, state, toolTypes, held, side);
     }
 
-    protected ItemInteractionResult onSoftMalletClick(Player playerIn, InteractionHand hand, Direction gridSide,
+    protected ItemInteractionResult onSoftMalletClick(Player playerIn, InteractionHand hand, ItemStack held,
+                                                      Direction gridSide,
                                                       BlockHitResult hitResult) {
+        if (!held.canPerformAction(GTItemAbilities.MALLET_PAUSE)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
         var controllable = GTCapabilityHelper.getControllable(getLevel(), getPos(), gridSide);
         if (controllable != null) {
             if (!isRemote()) {
@@ -243,10 +251,11 @@ public class WorldAcceleratorMachine extends TieredEnergyMachine implements ICon
 
     @Override
     protected @NotNull ItemInteractionResult onScrewdriverClick(Player playerIn, InteractionHand hand,
-                                                                Direction gridSide,
+                                                                ItemStack held, Direction gridSide,
                                                                 BlockHitResult hitResult) {
         if (!isRemote()) {
             isRandomTickMode = !isRandomTickMode;
+            setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_RANDOM_TICK_MODE, isRandomTickMode));
             playerIn.sendSystemMessage(Component.translatable(isRandomTickMode ?
                     "gtceu.machine.world_accelerator.mode_entity" : "gtceu.machine.world_accelerator.mode_tile"));
             scheduleRenderUpdate();

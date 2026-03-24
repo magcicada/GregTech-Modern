@@ -1,32 +1,36 @@
 package com.gregtechceu.gtceu.common.machine.multiblock.part;
 
+import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
+import com.gregtechceu.gtceu.api.gui.widget.SlotWidget;
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
 import com.gregtechceu.gtceu.api.item.tool.ToolHelper;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.feature.IInteractedMachine;
-import com.gregtechceu.gtceu.api.machine.feature.IMachineModifyDrops;
+import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMaintenanceMachine;
 import com.gregtechceu.gtceu.api.machine.multiblock.part.MultiblockPartMachine;
 import com.gregtechceu.gtceu.api.machine.multiblock.part.TieredPartMachine;
+import com.gregtechceu.gtceu.api.machine.property.GTMachineModelProperties;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
-import com.gregtechceu.gtceu.data.item.GTItems;
+import com.gregtechceu.gtceu.client.model.machine.MachineRenderState;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.utils.FormattingUtil;
 
 import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
-import com.lowdragmc.lowdraglib.syncdata.annotation.RequireRerender;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -35,7 +39,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.wrapper.PlayerInvWrapper;
+import net.neoforged.neoforge.items.wrapper.InvWrapper;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -46,17 +50,14 @@ import java.math.RoundingMode;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Supplier;
+import java.util.function.DoubleSupplier;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class MaintenanceHatchPartMachine extends TieredPartMachine
-                                         implements IMachineModifyDrops, IMaintenanceMachine, IInteractedMachine {
+                                         implements IMachineLife, IMaintenanceMachine, IInteractedMachine {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             MaintenanceHatchPartMachine.class, MultiblockPartMachine.MANAGED_FIELD_HOLDER);
+
     private static final float MAX_DURATION_MULTIPLIER = 1.1f;
     private static final float MIN_DURATION_MULTIPLIER = 0.9f;
     private static final float DURATION_ACTION_AMOUNT = 0.01f;
@@ -66,10 +67,8 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
     @Persisted
     private final NotifiableItemStackHandler itemStackHandler;
     @Getter
-    @Setter
     @Persisted
     @DescSynced
-    @RequireRerender
     private boolean isTaped;
     @Getter
     @Setter
@@ -85,18 +84,18 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
     @Nullable
     protected TickableSubscription maintenanceSubs;
 
-    public MaintenanceHatchPartMachine(IMachineBlockEntity metaTileEntityId, boolean isConfigurable) {
-        super(metaTileEntityId, isConfigurable ? 3 : 1);
+    public MaintenanceHatchPartMachine(IMachineBlockEntity holder, boolean isConfigurable) {
+        super(holder, isConfigurable ? GTValues.HV : GTValues.LV);
         this.isConfigurable = isConfigurable;
         this.itemStackHandler = createInventory();
-        this.itemStackHandler.setFilter(itemStack -> GTItems.DUCT_TAPE.is(itemStack));
+        this.itemStackHandler.setFilter(itemStack -> itemStack.is(GTItems.DUCT_TAPE.get()));
     }
 
     //////////////////////////////////////
     // ****** Initialization ******//
     //////////////////////////////////////
     protected NotifiableItemStackHandler createInventory() {
-        return new NotifiableItemStackHandler(this, 1, IO.BOTH, IO.IN);
+        return new NotifiableItemStackHandler(this, 1, IO.BOTH, IO.BOTH);
     }
 
     @Override
@@ -105,8 +104,8 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
     }
 
     @Override
-    public void onDrops(List<ItemStack> drops, Player entity) {
-        clearInventory(drops, itemStackHandler);
+    public void onMachineRemoved() {
+        clearInventory(itemStackHandler);
     }
 
     @Override
@@ -128,6 +127,13 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
         super.onLoad();
         if (!isRemote()) {
             updateMaintenanceSubscription();
+
+            // fix the model being invalid after the tape property rename
+            MachineRenderState renderState = getRenderState();
+            if (renderState.hasProperty(GTMachineModelProperties.IS_TAPED) &&
+                    this.isTaped != renderState.getValue(GTMachineModelProperties.IS_TAPED)) {
+                setRenderState(renderState.setValue(GTMachineModelProperties.IS_TAPED, this.isTaped));
+            }
         }
     }
 
@@ -170,7 +176,7 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
             }
             // Then for every slot in the player's main inventory, try to duct tape fix
             for (int i = 0; i < entityPlayer.getInventory().items.size(); i++) {
-                if (consumeDuctTape(new PlayerInvWrapper(entityPlayer.getInventory()), i)) {
+                if (consumeDuctTape(new InvWrapper(entityPlayer.getInventory()), i)) {
                     fixAllMaintenanceProblems();
                     setTaped(true);
                     return;
@@ -197,8 +203,7 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
         return false;
     }
 
-    private boolean consumeDuctTape(Player player, InteractionHand hand) {
-        var held = player.getItemInHand(hand);
+    private boolean consumeDuctTape(Player player, ItemStack held) {
         if (!held.isEmpty() && held.is(GTItems.DUCT_TAPE.get())) {
             if (!player.isCreative()) {
                 held.shrink(1);
@@ -296,6 +301,14 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
     }
 
     @Override
+    public void setTaped(boolean isTaped) {
+        if (this.isTaped != isTaped) {
+            this.isTaped = isTaped;
+            setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_TAPED, isTaped));
+        }
+    }
+
+    @Override
     public float getTimeMultiplier() {
         var result = 1f;
         if (durationMultiplier < 1.0)
@@ -307,33 +320,17 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
                 .floatValue();
     }
 
-    private void incInternalMultiplier() {
-        if (durationMultiplier >= MAX_DURATION_MULTIPLIER) {
-            durationMultiplier = MAX_DURATION_MULTIPLIER;
-            return;
-        }
-        durationMultiplier += DURATION_ACTION_AMOUNT;
-    }
-
-    private void decInternalMultiplier() {
-        if (durationMultiplier <= MIN_DURATION_MULTIPLIER) {
-            durationMultiplier = MIN_DURATION_MULTIPLIER;
-            return;
-        }
-        durationMultiplier -= DURATION_ACTION_AMOUNT;
-    }
-
     //////////////////////////////////////
     // ******* INTERACTION *******//
     //////////////////////////////////////
     @Override
-    public ItemInteractionResult onUse(BlockState state, Level world, BlockPos pos, Player player, InteractionHand hand,
-                                       BlockHitResult hit) {
+    public ItemInteractionResult onUseWithItem(ItemStack stack, BlockState state, Level world, BlockPos pos,
+                                               Player player, InteractionHand hand, BlockHitResult hit) {
         if (hasMaintenanceProblems()) {
-            if (consumeDuctTape(player, hand)) {
+            if (consumeDuctTape(player, stack)) {
                 fixAllMaintenanceProblems();
                 setTaped(true);
-                return ItemInteractionResult.CONSUME;
+                return ItemInteractionResult.SUCCESS;
             }
         }
         return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
@@ -360,9 +357,11 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
                     }).setMaxWidthLimit(150 - 8 - 8 - 4).clickHandler((componentData, clickData) -> {
                         if (!clickData.isRemote) {
                             if (componentData.equals("sub")) {
-                                decInternalMultiplier();
+                                durationMultiplier = Mth.clamp(durationMultiplier - DURATION_ACTION_AMOUNT,
+                                        MIN_DURATION_MULTIPLIER, MAX_DURATION_MULTIPLIER);
                             } else if (componentData.equals("add")) {
-                                incInternalMultiplier();
+                                durationMultiplier = Mth.clamp(durationMultiplier + DURATION_ACTION_AMOUNT,
+                                        MIN_DURATION_MULTIPLIER, MAX_DURATION_MULTIPLIER);
                             }
                         }
                     })));
@@ -380,15 +379,17 @@ public class MaintenanceHatchPartMachine extends TieredPartMachine
         return group;
     }
 
-    private static Component getTextWidgetText(String type, Supplier<Float> multiplier) {
+    private static Component getTextWidgetText(String type, DoubleSupplier multiplier) {
         Component tooltip;
-        if (multiplier.get() == 1.0) {
+        if (multiplier.getAsDouble() == 1.0) {
             tooltip = Component.translatable("gtceu.maintenance.configurable_" + type + ".unchanged_description");
         } else {
             tooltip = Component.translatable("gtceu.maintenance.configurable_" + type + ".changed_description",
-                    multiplier.get());
+                    FormattingUtil.formatNumber2Places(multiplier.getAsDouble()));
         }
-        return Component.translatable("gtceu.maintenance.configurable_" + type, multiplier.get())
+        return Component
+                .translatable("gtceu.maintenance.configurable_" + type,
+                        FormattingUtil.formatNumber2Places(multiplier.getAsDouble()))
                 .setStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, tooltip)));
     }
 }

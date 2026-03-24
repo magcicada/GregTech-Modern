@@ -3,9 +3,10 @@ package com.gregtechceu.gtceu.data.recipe.serialized.chemistry;
 import net.minecraft.data.recipes.RecipeOutput;
 
 import static com.gregtechceu.gtceu.api.GTValues.*;
-import static com.gregtechceu.gtceu.api.tag.TagPrefix.*;
-import static com.gregtechceu.gtceu.data.material.GTMaterials.*;
-import static com.gregtechceu.gtceu.data.recipe.GTRecipeTypes.*;
+import static com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialFlags.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
+import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
+import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
 
 public class PolymerRecipes {
 
@@ -37,14 +38,14 @@ public class PolymerRecipes {
         CHEMICAL_RECIPES.recipeBuilder("polyethylene_from_air")
                 .circuitMeta(1)
                 .inputFluids(Air.getFluid(1000))
-                .inputFluids(Ethylene.getFluid(144))
-                .outputFluids(Polyethylene.getFluid(144))
+                .inputFluids(Ethylene.getFluid(L))
+                .outputFluids(Polyethylene.getFluid(L))
                 .duration(160).EUt(VA[LV]).save(provider);
 
         CHEMICAL_RECIPES.recipeBuilder("polyethylene_from_oxygen")
                 .circuitMeta(1)
                 .inputFluids(Oxygen.getFluid(1000))
-                .inputFluids(Ethylene.getFluid(144))
+                .inputFluids(Ethylene.getFluid(L))
                 .outputFluids(Polyethylene.getFluid(216))
                 .duration(160).EUt(VA[LV]).save(provider);
 
@@ -76,6 +77,7 @@ public class PolymerRecipes {
                 .duration(160).EUt(VA[LV]).save(provider);
 
         CHEMICAL_RECIPES.recipeBuilder("vinyl_chloride_from_chlorine")
+                .circuitMeta(1)
                 .inputFluids(Chlorine.getFluid(2000))
                 .inputFluids(Ethylene.getFluid(1000))
                 .outputFluids(VinylChloride.getFluid(1000))
@@ -92,14 +94,14 @@ public class PolymerRecipes {
         CHEMICAL_RECIPES.recipeBuilder("polyvinyl_chloride_from_air")
                 .circuitMeta(1)
                 .inputFluids(Air.getFluid(1000))
-                .inputFluids(VinylChloride.getFluid(144))
-                .outputFluids(PolyvinylChloride.getFluid(144))
+                .inputFluids(VinylChloride.getFluid(L))
+                .outputFluids(PolyvinylChloride.getFluid(L))
                 .duration(160).EUt(VA[LV]).save(provider);
 
         CHEMICAL_RECIPES.recipeBuilder("polyvinyl_chloride_from_oxygen")
                 .circuitMeta(1)
                 .inputFluids(Oxygen.getFluid(1000))
-                .inputFluids(VinylChloride.getFluid(144))
+                .inputFluids(VinylChloride.getFluid(L))
                 .outputFluids(PolyvinylChloride.getFluid(216))
                 .duration(160).EUt(VA[LV]).save(provider);
 
@@ -148,14 +150,14 @@ public class PolymerRecipes {
         CHEMICAL_RECIPES.recipeBuilder("ptfe_from_air")
                 .circuitMeta(1)
                 .inputFluids(Air.getFluid(1000))
-                .inputFluids(Tetrafluoroethylene.getFluid(144))
-                .outputFluids(Polytetrafluoroethylene.getFluid(144))
+                .inputFluids(Tetrafluoroethylene.getFluid(L))
+                .outputFluids(Polytetrafluoroethylene.getFluid(L))
                 .duration(160).EUt(VA[LV]).save(provider);
 
         CHEMICAL_RECIPES.recipeBuilder("ptfe_from_oxygen")
                 .circuitMeta(1)
                 .inputFluids(Oxygen.getFluid(1000))
-                .inputFluids(Tetrafluoroethylene.getFluid(144))
+                .inputFluids(Tetrafluoroethylene.getFluid(L))
                 .outputFluids(Polytetrafluoroethylene.getFluid(216))
                 .duration(160).EUt(VA[LV]).save(provider);
 

@@ -1,11 +1,16 @@
 package com.gregtechceu.gtceu.common.item.behavior;
 
+import com.gregtechceu.gtceu.api.blockentity.MetaMachineBlockEntity;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
+import com.gregtechceu.gtceu.api.gui.widget.SlotWidget;
 import com.gregtechceu.gtceu.api.item.component.IAddInformation;
 import com.gregtechceu.gtceu.api.item.component.IItemUIFactory;
+import com.gregtechceu.gtceu.api.machine.feature.IHasCircuitSlot;
+import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
 import com.gregtechceu.gtceu.api.transfer.item.CustomItemStackHandler;
-import com.gregtechceu.gtceu.data.item.GTItems;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 
 import com.lowdragmc.lowdraglib.gui.factory.HeldItemUIFactory;
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
@@ -13,28 +18,25 @@ import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
 import com.lowdragmc.lowdraglib.gui.texture.ItemStackTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.LabelWidget;
-import com.lowdragmc.lowdraglib.gui.widget.SlotWidget;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.util.List;
 
-/**
- * @author KilaBash
- * @date 2023/2/23
- * @implNote IntCircuitBehaviour
- */
 public class IntCircuitBehaviour implements IItemUIFactory, IAddInformation {
 
     public static final int CIRCUIT_MAX = 32;
 
     public static ItemStack stack(int configuration) {
-        var stack = GTItems.INTEGRATED_CIRCUIT.asStack();
+        var stack = GTItems.PROGRAMMED_CIRCUIT.asStack();
         setCircuitConfiguration(stack, configuration);
         return stack;
     }
@@ -55,7 +57,7 @@ public class IntCircuitBehaviour implements IItemUIFactory, IAddInformation {
     }
 
     public static boolean isIntegratedCircuit(ItemStack itemStack) {
-        return GTItems.INTEGRATED_CIRCUIT.isIn(itemStack);
+        return GTItems.PROGRAMMED_CIRCUIT.isIn(itemStack);
     }
 
     // deprecated, not needed (for now)
@@ -68,6 +70,7 @@ public class IntCircuitBehaviour implements IItemUIFactory, IAddInformation {
     // deprecated, not needed (for now)
     @Deprecated
     public static void adjustConfiguration(ItemStack stack, int amount) {
+        if (!isIntegratedCircuit(stack)) return;
         int configuration = getCircuitConfiguration(stack);
         configuration += amount;
         configuration = Mth.clamp(configuration, 0, CIRCUIT_MAX);
@@ -116,5 +119,26 @@ public class IntCircuitBehaviour implements IItemUIFactory, IAddInformation {
         }
         modular.mainGroup.setBackground(GuiTextures.BACKGROUND);
         return modular;
+    }
+
+    @Override
+    public InteractionResult useOn(UseOnContext context) {
+        var stack = context.getItemInHand();
+        int circuitSetting = getCircuitConfiguration(stack);
+        BlockEntity entity = context.getLevel().getBlockEntity(context.getClickedPos());
+        if (entity instanceof MetaMachineBlockEntity machineEntity && context.isSecondaryUseActive()) {
+            if (machineEntity.metaMachine instanceof IHasCircuitSlot circuitMachine &&
+                    circuitMachine.getCircuitInventory().getSlots() > 0) {
+                setCircuitConfig(circuitMachine.getCircuitInventory(), circuitSetting);
+            }
+            if (!ConfigHolder.INSTANCE.machines.ghostCircuit)
+                stack.shrink(1);
+            return InteractionResult.SUCCESS;
+        }
+        return IItemUIFactory.super.useOn(context);
+    }
+
+    void setCircuitConfig(NotifiableItemStackHandler circuit, int value) {
+        circuit.setStackInSlot(0, IntCircuitBehaviour.stack(value));
     }
 }

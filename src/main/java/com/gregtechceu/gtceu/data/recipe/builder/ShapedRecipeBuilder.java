@@ -26,11 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * @author KilaBash
- * @date 2023/2/21
- * @implNote ShapedRecipeBuilder
- */
 @Accessors(chain = true, fluent = true)
 public class ShapedRecipeBuilder {
 
@@ -41,10 +36,10 @@ public class ShapedRecipeBuilder {
     @Setter
     protected String group;
     @Setter
-    private RecipeCategory category = RecipeCategory.MISC;
+    protected RecipeCategory category = RecipeCategory.MISC;
 
-    private final List<String> rows = Lists.newArrayList();
-    private final Map<Character, Ingredient> key = Maps.newLinkedHashMap();
+    protected final List<String> rows = Lists.newArrayList();
+    protected final Map<Character, Ingredient> key = Maps.newLinkedHashMap();
     @Setter
     protected boolean isStrict;
 
@@ -97,20 +92,22 @@ public class ShapedRecipeBuilder {
 
     public void save(RecipeOutput consumer) {
         var recipeId = id == null ? defaultId() : id;
-        ShapedRecipe shapedrecipe = isStrict ? new StrictShapedRecipe(
-                Objects.requireNonNullElse(this.group, ""),
-                RecipeBuilder.determineBookCategory(this.category),
-                ShapedRecipePattern.of(key, rows),
-                this.output,
-                false) :
-                new ShapedRecipe(
-                        Objects.requireNonNullElse(this.group, ""),
-                        RecipeBuilder.determineBookCategory(this.category),
-                        ShapedRecipePattern.of(key, rows),
-                        this.output,
-                        false);
-        consumer.accept(ResourceLocation.fromNamespaceAndPath(recipeId.getNamespace(), "shaped/" + recipeId.getPath()),
-                shapedrecipe,
-                null);
+        ShapedRecipe recipe;
+        if (isStrict) {
+            recipe = new StrictShapedRecipe(
+                    Objects.requireNonNullElse(this.group, ""),
+                    RecipeBuilder.determineBookCategory(this.category),
+                    ShapedRecipePattern.of(key, rows),
+                    this.output,
+                    false);
+        } else {
+            recipe = new ShapedRecipe(
+                    Objects.requireNonNullElse(this.group, ""),
+                    RecipeBuilder.determineBookCategory(this.category),
+                    ShapedRecipePattern.of(key, rows),
+                    this.output,
+                    false);
+        }
+        consumer.accept(recipeId.withPrefix("shaped/"), recipe, null);
     }
 }

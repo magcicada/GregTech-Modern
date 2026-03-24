@@ -3,6 +3,7 @@ package com.gregtechceu.gtceu.common.machine.storage;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
+import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.feature.IDataInfoProvider;
 import com.gregtechceu.gtceu.api.pipenet.longdistance.ILDEndpoint;
 import com.gregtechceu.gtceu.api.pipenet.longdistance.LongDistanceNetwork;
@@ -16,11 +17,14 @@ import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.TickTask;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 
 import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,14 +44,32 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
     private IO ioType = IO.NONE;
     private ILDEndpoint link;
     private boolean placed = false;
+    @Nullable
+    protected TickableSubscription refreshNetSubs;
 
     public LongDistanceEndpointMachine(IMachineBlockEntity holder, LongDistancePipeType pipeType) {
         super(holder);
         this.pipeType = Objects.requireNonNull(pipeType);
     }
 
+    protected void updateRefreshNetSubscription() {
+        if (getLink() == null) {
+            refreshNetSubs = subscribeServerTick(refreshNetSubs, this::checkNetwork);
+        } else if (refreshNetSubs != null) {
+            refreshNetSubs.unsubscribe();
+            refreshNetSubs = null;
+            super.notifyBlockUpdate();
+        }
+    }
+
+    protected void checkNetwork() {
+        if (getOffsetTimer() % 20 == 0) {
+            updateNetwork();
+        }
+    }
+
     public void updateNetwork() {
-        if (this.getLevel().isClientSide) {
+        if (isRemote()) {
             return;
         }
         LongDistanceNetwork network = LongDistanceNetwork.get(getLevel(), getPos());
@@ -65,18 +87,19 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
             setIoType(IO.NONE);
         } else if (networks.size() == 1) {
             // one neighbour network found, attach self to neighbour network
-            networks.get(0).onPlaceEndpoint(this);
+            networks.getFirst().onPlaceEndpoint(this);
         } else {
             // two neighbour networks found, configuration invalid
             setIoType(IO.NONE);
         }
+        updateRefreshNetSubscription();
     }
 
     @Override
     public void setFrontFacing(Direction frontFacing) {
         this.placed = true;
         super.setFrontFacing(frontFacing);
-        if (getLevel() != null && !getLevel().isClientSide) {
+        if (!isRemote()) {
             updateNetwork();
         }
     }
@@ -84,13 +107,15 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
     @Override
     public void onLoad() {
         super.onLoad();
-        this.updateNetwork();
+        if (getLevel() instanceof ServerLevel serverLevel) {
+            serverLevel.getServer().tell(new TickTask(0, this::updateRefreshNetSubscription));
+        }
     }
 
     @Override
     public void onUnload() {
         super.onUnload();
-        if (this.getLevel().isClientSide) return;
+        if (isRemote()) return;
         if (link != null) {
             // invalidate linked endpoint
             link.invalidateLink();
@@ -104,7 +129,7 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
 
     @Override
     public void onNeighborChanged(Block block, BlockPos fromPos, boolean isMoving) {
-        if (!placed || getLevel().isClientSide) return;
+        if (!placed || isRemote()) return;
 
         List<LongDistanceNetwork> networks = findNetworks();
         this.updateNetwork();
@@ -117,7 +142,7 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
                 network.onPlaceEndpoint(this);
             } else if (networks.size() == 1) {
                 // add to neighbour network
-                networks.get(0).onPlaceEndpoint(this);
+                networks.getFirst().onPlaceEndpoint(this);
             }
         } else {
             if (networks.size() > 1) {
@@ -133,7 +158,7 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
     @Override
     public void notifyBlockUpdate() {
         super.notifyBlockUpdate();
-        this.updateNetwork();
+        updateNetwork();
     }
 
     private List<LongDistanceNetwork> findNetworks() {
@@ -156,7 +181,7 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
     }
 
     @Override
-    public ILDEndpoint getLink() {
+    public @Nullable ILDEndpoint getLink() {
         if (link == null) {
             LongDistanceNetwork network = LongDistanceNetwork.get(getLevel(), getPos());
             if (network != null && network.isValid()) {
@@ -178,7 +203,12 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
 
     @Override
     public void invalidateLink() {
-        this.link = null;
+        if (link != null) {
+            this.link = null;
+            if (getLevel() instanceof ServerLevel serverLevel) {
+                serverLevel.getServer().tell(new TickTask(0, this::updateRefreshNetSubscription));
+            }
+        }
     }
 
     @Override
@@ -191,7 +221,6 @@ public abstract class LongDistanceEndpointMachine extends MetaMachine implements
         return MANAGED_FIELD_HOLDER;
     }
 
-    @NotNull
     @Override
     public List<Component> getDataInfo(PortableScannerBehavior.DisplayMode mode) {
         List<Component> textComponents = new ArrayList<>();

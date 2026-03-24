@@ -22,11 +22,6 @@ public class SerializerFloat implements IContentSerializer<Float> {
     }
 
     @Override
-    public Codec<Float> codec() {
-        return Codec.FLOAT;
-    }
-
-    @Override
     public Float of(Object o) {
         if (o instanceof Float) {
             return (Float) o;
@@ -41,5 +36,15 @@ public class SerializerFloat implements IContentSerializer<Float> {
     @Override
     public Float defaultValue() {
         return 0f;
+    }
+
+    @Override
+    public Class<Float> contentClass() {
+        return Float.class;
+    }
+
+    @Override
+    public Codec<Float> codec() {
+        return Codec.FLOAT;
     }
 }

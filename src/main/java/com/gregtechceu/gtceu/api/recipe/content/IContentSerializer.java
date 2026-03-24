@@ -1,35 +1,30 @@
 package com.gregtechceu.gtceu.api.recipe.content;
 
-import com.lowdragmc.lowdraglib.LDLib;
-
 import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.mojang.serialization.*;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.JsonOps;
 
 public interface IContentSerializer<T> {
 
     default void toNetwork(RegistryFriendlyByteBuf buf, T content) {
-        buf.writeUtf(codec().encodeStart(
-                buf.registryAccess().createSerializationContext(JsonOps.INSTANCE), content).getOrThrow().toString());
+        buf.writeJsonWithCodec(codec(), content);
     }
 
     default T fromNetwork(RegistryFriendlyByteBuf buf) {
-        return codec().parse(buf.registryAccess().createSerializationContext(JsonOps.INSTANCE),
-                LDLib.GSON.fromJson(buf.readUtf(), JsonElement.class)).getOrThrow();
+        return buf.readJsonWithCodec(codec());
     }
-
-    Codec<T> codec();
 
     default T fromJson(JsonElement json, HolderLookup.Provider provider) {
         return codec().parse(provider.createSerializationContext(JsonOps.INSTANCE), json).getOrThrow();
     }
 
     default JsonElement toJson(T content, HolderLookup.Provider provider) {
-        return codec().encodeStart(
-                provider.createSerializationContext(JsonOps.INSTANCE), content).getOrThrow();
+        return codec().encodeStart(provider.createSerializationContext(JsonOps.INSTANCE), content).getOrThrow();
     }
 
     T of(Object o);
@@ -40,53 +35,28 @@ public interface IContentSerializer<T> {
     default void toNetworkContent(RegistryFriendlyByteBuf buf, Content content) {
         T inner = (T) content.getContent();
         toNetwork(buf, inner);
-        buf.writeFloat(content.chance);
-        buf.writeFloat(content.tierChanceBoost);
-        buf.writeBoolean(content.slotName != null);
-        if (content.slotName != null) {
-            buf.writeUtf(content.slotName);
-        }
-        buf.writeBoolean(content.uiName != null);
-        if (content.uiName != null) {
-            buf.writeUtf(content.uiName);
-        }
+        buf.writeVarInt(content.chance);
+        buf.writeVarInt(content.maxChance);
+        buf.writeVarInt(content.tierChanceBoost);
     }
 
     default Content fromNetworkContent(RegistryFriendlyByteBuf buf) {
         T inner = fromNetwork(buf);
-        float chance = buf.readFloat();
-        float tierChanceBoost = buf.readFloat();
-        String slotName = null;
-        if (buf.readBoolean()) {
-            slotName = buf.readUtf();
-        }
-        String uiName = null;
-        if (buf.readBoolean()) {
-            uiName = buf.readUtf();
-        }
-        return new Content(inner, chance, tierChanceBoost, slotName, uiName);
+        int chance = buf.readVarInt();
+        int maxChance = buf.readVarInt();
+        int tierChanceBoost = buf.readVarInt();
+        return new Content(inner, chance, maxChance, tierChanceBoost);
     }
 
-    @SuppressWarnings("unchecked")
-    default JsonElement toJsonContent(Content content, HolderLookup.Provider provider) {
-        JsonObject json = new JsonObject();
-        json.add("content", toJson((T) content.getContent(), provider));
-        json.addProperty("chance", content.chance);
-        json.addProperty("tierChanceBoost", content.tierChanceBoost);
-        if (content.slotName != null)
-            json.addProperty("slotName", content.slotName);
-        if (content.uiName != null)
-            json.addProperty("uiName", content.uiName);
-        return json;
+    Class<T> contentClass();
+
+    Codec<T> codec();
+
+    default Tag toNbt(T content, HolderLookup.Provider provider) {
+        return codec().encodeStart(provider.createSerializationContext(NbtOps.INSTANCE), content).getOrThrow();
     }
 
-    default Content fromJsonContent(JsonElement json, HolderLookup.Provider provider) {
-        JsonObject jsonObject = json.getAsJsonObject();
-        T inner = fromJson(jsonObject.get("content"), provider);
-        float chance = jsonObject.has("chance") ? jsonObject.get("chance").getAsFloat() : 1;
-        float tierChanceBoost = jsonObject.has("tierChanceBoost") ? jsonObject.get("tierChanceBoost").getAsFloat() : 0;
-        String slotName = jsonObject.has("slotName") ? jsonObject.get("slotName").getAsString() : null;
-        String uiName = jsonObject.has("uiName") ? jsonObject.get("uiName").getAsString() : null;
-        return new Content(inner, chance, tierChanceBoost, slotName, uiName);
+    default T fromNbt(Tag tag, HolderLookup.Provider provider) {
+        return codec().parse(provider.createSerializationContext(NbtOps.INSTANCE), tag).getOrThrow();
     }
 }

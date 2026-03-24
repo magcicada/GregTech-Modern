@@ -17,9 +17,9 @@ import com.gregtechceu.gtceu.api.machine.multiblock.MultiblockDisplayText;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableElectricMultiblockMachine;
 import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
 import com.gregtechceu.gtceu.api.misc.EnergyContainerList;
-import com.gregtechceu.gtceu.api.multiblock.util.RelativeDirection;
+import com.gregtechceu.gtceu.api.pattern.util.RelativeDirection;
+import com.gregtechceu.gtceu.api.transfer.fluid.FluidHandlerList;
 import com.gregtechceu.gtceu.config.ConfigHolder;
-import com.gregtechceu.gtceu.data.material.GTMaterials;
 import com.gregtechceu.gtceu.utils.FormattingUtil;
 import com.gregtechceu.gtceu.utils.GTTransferUtils;
 import com.gregtechceu.gtceu.utils.GTUtil;
@@ -30,7 +30,6 @@ import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib.gui.widget.Widget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
-import com.lowdragmc.lowdraglib.misc.FluidTransferList;
 import com.lowdragmc.lowdraglib.syncdata.IManaged;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
@@ -41,16 +40,17 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -62,6 +62,8 @@ import java.util.*;
 import java.util.function.Supplier;
 
 import javax.annotation.ParametersAreNonnullByDefault;
+
+import static com.gregtechceu.gtceu.data.recipe.CustomTags.HPCA_COOLANTS;
 
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
@@ -101,7 +103,8 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
         List<IEnergyContainer> energyContainers = new ArrayList<>();
         List<IFluidHandler> coolantContainers = new ArrayList<>();
         List<IHPCAComponentHatch> componentHatches = new ArrayList<>();
-        Map<Long, IO> ioMap = getMultiblockState().getMatchContext().getOrCreate("ioMap", Long2ObjectMaps::emptyMap);
+        Long2ObjectMap<IO> ioMap = getMultiblockState().getMatchContext().getOrCreate("ioMap",
+                Long2ObjectMaps::emptyMap);
         for (IMultiPart part : getParts()) {
             IO io = ioMap.getOrDefault(part.self().getPos().asLong(), IO.BOTH);
             if (part instanceof IHPCAComponentHatch componentHatch) {
@@ -111,20 +114,22 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
                 this.maintenance = maintenanceMachine;
             }
             if (io == IO.NONE || io == IO.OUT) continue;
-            for (var handler : part.getRecipeHandlers()) {
-                // If IO not compatible
-                if (io != IO.BOTH && handler.getHandlerIO() != IO.BOTH && io != handler.getHandlerIO()) continue;
-                if (handler.getCapability() == EURecipeCapability.CAP &&
-                        handler instanceof IEnergyContainer container) {
-                    energyContainers.add(container);
-                } else if (handler.getCapability() == FluidRecipeCapability.CAP &&
-                        handler instanceof IFluidHandler fluidHandler) {
-                            coolantContainers.add(fluidHandler);
-                        }
+            var handlerLists = part.getRecipeHandlers();
+            for (var handlerList : handlerLists) {
+                if (!handlerList.isValid(io)) continue;
+
+                handlerList.getCapability(EURecipeCapability.CAP).stream()
+                        .filter(IEnergyContainer.class::isInstance)
+                        .map(IEnergyContainer.class::cast)
+                        .forEach(energyContainers::add);
+                handlerList.getCapability(FluidRecipeCapability.CAP).stream()
+                        .filter(IFluidHandler.class::isInstance)
+                        .map(IFluidHandler.class::cast)
+                        .forEach(coolantContainers::add);
             }
         }
         this.energyContainer = new EnergyContainerList(energyContainers);
-        this.coolantHandler = new FluidTransferList(coolantContainers);
+        this.coolantHandler = new FluidHandlerList(coolantContainers);
         this.hpcaHandler.onStructureForm(componentHatches);
 
         if (getLevel() instanceof ServerLevel serverLevel) {
@@ -160,6 +165,7 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
 
     @Override
     public void onStructureInvalid() {
+        this.updateActive(false);
         super.onStructureInvalid();
         this.energyContainer = new EnergyContainerList(new ArrayList<>());
         this.hpcaHandler.onStructureInvalidate();
@@ -205,17 +211,26 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
             // passively cool (slowly) if not active
             temperature = Math.max(IDLE_TEMPERATURE, temperature - 0.25);
         }
+        this.updateActive(this.getEnergyContainer().getEnergyStored() > 0);
+    }
+
+    private void updateActive(boolean active) {
+        for (var part : getParts()) {
+            if (part instanceof IHPCAComponentHatch hpcaPart) {
+                hpcaPart.setActive(active);
+            }
+        }
     }
 
     private void consumeEnergy() {
-        int energyToConsume = hpcaHandler.getCurrentEUt();
+        long energyToConsume = hpcaHandler.getCurrentEUt();
         boolean hasMaintenance = ConfigHolder.INSTANCE.machines.enableMaintenance && this.maintenance != null;
         if (hasMaintenance) {
             // 10% more energy per maintenance problem
             energyToConsume += maintenance.getNumMaintenanceProblems() * energyToConsume / 10;
         }
 
-        if (this.hasNotEnoughEnergy && energyContainer.getEnergyStored() > 19L * energyToConsume) {
+        if (this.hasNotEnoughEnergy && energyContainer.getInputPerSec() > 19L * energyToConsume) {
             this.hasNotEnoughEnergy = false;
         }
 
@@ -270,7 +285,7 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
     public void addDisplayText(List<Component> textList) {
         MultiblockDisplayText.builder(textList, isFormed())
                 .setWorkingStatus(true, hpcaHandler.getAllocatedCWUt() > 0) // transform into two-state system for
-                // display
+                                                                            // display
                 .setWorkingStatusKeys(
                         "gtceu.multiblock.idling",
                         "gtceu.multiblock.idling",
@@ -386,7 +401,7 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
         // cached gui info
         // holding these values past the computation clear because GUI is too "late" to read the state in time
         @DescSynced
-        private int cachedEUt;
+        private long cachedEUt;
         @DescSynced
         private int cachedCWUt;
 
@@ -474,50 +489,44 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
             }
             if (forceCoolWithActive || maxActiveCooling <= temperatureChange) {
                 // try to fully utilize active coolers
-                FluidStack coolantStack = GTTransferUtils.drainFluidAccountNotifiableList(coolantTank,
-                        getCoolantStack(maxCoolantDrain), IFluidHandler.FluidAction.EXECUTE);
-                if (!coolantStack.isEmpty()) {
-                    long coolantDrained = coolantStack.getAmount();
-                    if (coolantDrained == maxCoolantDrain) {
-                        // coolant requirement was fully met
-                        temperatureChange -= maxActiveCooling;
-                    } else {
-                        // coolant requirement was only partially met, cool proportional to fluid amount drained
-                        // a * (b / c)
-                        temperatureChange -= maxActiveCooling * (1.0 * coolantDrained / maxCoolantDrain);
-                    }
+                int remainingCoolant = maxCoolantDrain;
+                for (var fluid : BuiltInRegistries.FLUID.getTagOrEmpty(HPCA_COOLANTS)) {
+                    FluidStack drained = GTTransferUtils.drainFluidAccountNotifiableList(coolantTank,
+                            new FluidStack(fluid, remainingCoolant), IFluidHandler.FluidAction.EXECUTE);
+                    remainingCoolant -= drained.getAmount();
+                    if (remainingCoolant <= 0) break;
+                }
+                if (remainingCoolant <= 0) {
+                    // coolant requirement was fully met
+                    temperatureChange -= maxActiveCooling;
+                } else {
+                    // coolant requirement was only partially met, cool proportional to fluid amount drained
+                    // a * (b / c)
+                    int coolantDrained = maxCoolantDrain - remainingCoolant;
+                    temperatureChange -= maxActiveCooling * (1.0 * coolantDrained / maxCoolantDrain);
                 }
             } else if (temperatureChange > 0) {
                 // try to partially utilize active coolers to stabilize to zero
                 double temperatureToDecrease = Math.min(temperatureChange, maxActiveCooling);
                 int coolantToDrain = Math.max(1, (int) (maxCoolantDrain * (temperatureToDecrease / maxActiveCooling)));
-                FluidStack coolantStack = GTTransferUtils.drainFluidAccountNotifiableList(coolantTank,
-                        getCoolantStack(coolantToDrain), IFluidHandler.FluidAction.EXECUTE);
-                if (!coolantStack.isEmpty()) {
-                    long coolantDrained = coolantStack.getAmount();
-                    if (coolantDrained == coolantToDrain) {
-                        // successfully stabilized to zero
-                        return 0;
-                    } else {
-                        // coolant requirement was only partially met, cool proportional to fluid amount drained
-                        // a * (b / c)
-                        temperatureChange -= temperatureToDecrease * (1.0 * coolantDrained / coolantToDrain);
-                    }
+                int remainingCoolant = coolantToDrain;
+                for (var fluid : BuiltInRegistries.FLUID.getTagOrEmpty(HPCA_COOLANTS)) {
+                    FluidStack drained = GTTransferUtils.drainFluidAccountNotifiableList(coolantTank,
+                            new FluidStack(fluid, remainingCoolant), IFluidHandler.FluidAction.EXECUTE);
+                    remainingCoolant -= drained.getAmount();
+                    if (remainingCoolant <= 0) break;
+                }
+                if (remainingCoolant <= 0) {
+                    // successfully stabilized to zero
+                    return 0;
+                } else {
+                    // coolant requirement was only partially met, cool proportional to fluid amount drained
+                    // a * (b / c)
+                    int coolantDrained = (coolantToDrain - remainingCoolant);
+                    temperatureChange -= temperatureToDecrease * (1.0 * coolantDrained / coolantToDrain);
                 }
             }
             return temperatureChange;
-        }
-
-        /**
-         * Get the coolant stack for this HPCA. Eventually this could be made more diverse with different
-         * coolants from different Active Cooler components, but currently it is just a fixed Fluid.
-         */
-        public FluidStack getCoolantStack(int amount) {
-            return new FluidStack(getCoolant(), amount);
-        }
-
-        private Fluid getCoolant() {
-            return GTMaterials.PCBCoolant.getFluid();
         }
 
         /**
@@ -542,6 +551,7 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
 
         /** Allocate computation on a given request. Allocates for one tick. */
         public int allocateCWUt(int cwut, boolean simulate) {
+            if (cwut == 0) return 0;
             int maxCWUt = getMaxCWUt();
             int availableCWUt = maxCWUt - this.allocatedCWUt;
             int toAllocate = Math.min(cwut, availableCWUt);
@@ -561,10 +571,10 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
         }
 
         /** The current EU/t this HPCA should use, considering passive drain, current computation, etc.. */
-        public int getCurrentEUt() {
-            int maximumCWUt = Math.max(1, getMaxCWUt()); // behavior is no different setting this to 1 if it is 0
-            int maximumEUt = getMaxEUt();
-            int upkeepEUt = getUpkeepEUt();
+        public long getCurrentEUt() {
+            long maximumCWUt = Math.max(1, getMaxCWUt()); // behavior is no different setting this to 1 if it is 0
+            long maximumEUt = getMaxEUt();
+            long upkeepEUt = getUpkeepEUt();
 
             if (maximumEUt == upkeepEUt) {
                 return maximumEUt;
@@ -576,8 +586,8 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
         }
 
         /** The amount of EU/t this HPCA uses just to stay on with 0 output computation. */
-        public int getUpkeepEUt() {
-            int upkeepEUt = 0;
+        public long getUpkeepEUt() {
+            long upkeepEUt = 0;
             for (var component : components) {
                 upkeepEUt += component.getUpkeepEUt();
             }
@@ -585,8 +595,8 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
         }
 
         /** The maximum EU/t that this HPCA could ever use with the given configuration. */
-        public int getMaxEUt() {
-            int maximumEUt = 0;
+        public long getMaxEUt() {
+            long maximumEUt = 0;
             for (var component : components) {
                 maximumEUt += component.getMaxEUt();
             }
@@ -710,7 +720,7 @@ public class HPCAMachine extends WorkableElectricMultiblockMachine
 
         public void tryGatherClientComponents(Level world, BlockPos pos, Direction frontFacing,
                                               Direction upwardsFacing, boolean flip) {
-            Direction relativeUp = RelativeDirection.UP.getRelativeFacing(frontFacing, upwardsFacing, flip);
+            Direction relativeUp = RelativeDirection.UP.getRelative(frontFacing, upwardsFacing, flip);
 
             if (components.isEmpty()) {
                 BlockPos testPos = pos

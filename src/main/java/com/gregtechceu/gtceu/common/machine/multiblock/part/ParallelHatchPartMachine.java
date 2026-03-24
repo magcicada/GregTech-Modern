@@ -30,11 +30,12 @@ public class ParallelHatchPartMachine extends TieredPartMachine implements IFanc
 
     @Persisted
     @Getter
-    private int currentParallel;
+    private int currentParallel = 1;
 
     public ParallelHatchPartMachine(IMachineBlockEntity holder, int tier) {
         super(holder, tier);
         this.maxParallel = (int) Math.pow(4, tier - GTValues.EV);
+        this.currentParallel = maxParallel;
     }
 
     public void setCurrentParallel(int parallelAmount) {
@@ -60,5 +61,10 @@ public class ParallelHatchPartMachine extends TieredPartMachine implements IFanc
     @NotNull
     public ManagedFieldHolder getFieldHolder() {
         return MANAGED_FIELD_HOLDER;
+    }
+
+    @Override
+    public boolean canShared() {
+        return false;
     }
 }

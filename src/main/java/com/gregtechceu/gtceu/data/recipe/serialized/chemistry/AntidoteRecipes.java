@@ -3,9 +3,10 @@ package com.gregtechceu.gtceu.data.recipe.serialized.chemistry;
 import net.minecraft.data.recipes.RecipeOutput;
 
 import static com.gregtechceu.gtceu.api.GTValues.*;
-import static com.gregtechceu.gtceu.api.tag.TagPrefix.*;
-import static com.gregtechceu.gtceu.data.material.GTMaterials.*;
-import static com.gregtechceu.gtceu.data.recipe.GTRecipeTypes.*;
+import static com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialFlags.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
+import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
+import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
 
 public class AntidoteRecipes {
 
@@ -126,12 +127,13 @@ public class AntidoteRecipes {
                 .inputItems(dust, PotassiumFerrocyanide, 51)
                 .inputFluids(Iron3Chloride.getFluid(4000))
                 .outputItems(dust, PrussianBlue, 1)
-                .outputItems(dust, RockSalt, 6)
+                .outputItems(dust, RockSalt, 24)
                 .duration(500).EUt(VA[HV]).save(provider);
     }
 
     public static void dtpaProcess(RecipeOutput provider) {
         CHEMICAL_RECIPES.recipeBuilder("dichloroethane")
+                .circuitMeta(2)
                 .inputFluids(Ethylene.getFluid(1000))
                 .inputFluids(Chlorine.getFluid(2000))
                 .notConsumableFluid(Iron3Chloride.getFluid(100))

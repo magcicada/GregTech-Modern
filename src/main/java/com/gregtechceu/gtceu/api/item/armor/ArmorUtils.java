@@ -2,9 +2,9 @@ package com.gregtechceu.gtceu.api.item.armor;
 
 import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
 import com.gregtechceu.gtceu.api.capability.IElectricItem;
+import com.gregtechceu.gtceu.common.data.GTSoundEntries;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.core.mixins.ServerGamePacketListenerImplAccessor;
-import com.gregtechceu.gtceu.data.sound.GTSoundEntries;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -24,13 +24,21 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.event.EventHooks;
 
 import com.mojang.datafixers.util.Pair;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntIntPair;
+import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public class ArmorUtils {
+
+    public static final int MIN_NIGHTVISION_CHARGE = 4;
+    public static final int NIGHTVISION_DURATION = 20; // 20 seconds
+    // Flashing starts at 10 seconds + two second buffer to prevent flicker
+    public static final int NIGHT_VISION_RESET = 12;
 
     /**
      * Check is possible to charge item
@@ -50,10 +58,10 @@ public class ArmorUtils {
      * @param tier of charger
      * @return Map of the inventory and a list of the index of a chargable item
      */
-    public static List<Pair<NonNullList<ItemStack>, List<Integer>>> getChargeableItem(Player player, int tier) {
-        List<Pair<NonNullList<ItemStack>, List<Integer>>> inventorySlotMap = new ArrayList<>();
+    public static List<Pair<NonNullList<ItemStack>, IntList>> getChargeableItem(Player player, int tier) {
+        List<Pair<NonNullList<ItemStack>, IntList>> inventorySlotMap = new ArrayList<>();
 
-        List<Integer> openMainSlots = new ArrayList<>();
+        IntList openMainSlots = new IntArrayList();
         for (int i = 0; i < player.getInventory().items.size(); i++) {
             ItemStack current = player.getInventory().items.get(i);
             IElectricItem item = GTCapabilityHelper.getElectricItem(current);
@@ -68,7 +76,7 @@ public class ArmorUtils {
             inventorySlotMap.add(Pair.of(player.getInventory().items, openMainSlots));
         }
 
-        List<Integer> openArmorSlots = new ArrayList<>();
+        IntList openArmorSlots = new IntArrayList();
         for (int i = 0; i < player.getInventory().armor.size(); i++) {
             ItemStack current = player.getInventory().armor.get(i);
             IElectricItem item = GTCapabilityHelper.getElectricItem(current);
@@ -92,7 +100,7 @@ public class ArmorUtils {
         }
 
         if (isPossibleToCharge(offHand) && offHandItem.getTier() <= tier) {
-            inventorySlotMap.add(Pair.of(player.getInventory().offhand, Collections.singletonList(0)));
+            inventorySlotMap.add(Pair.of(player.getInventory().offhand, new IntArrayList(new int[] { 0 })));
         }
 
         return inventorySlotMap;
@@ -101,7 +109,7 @@ public class ArmorUtils {
     /**
      * Spawn particle behind player with speedY speed
      */
-    public static void spawnParticle(Level world, Player player, ParticleOptions type, double speedY) {
+    public static void spawnParticle(Level world, Player player, @Nullable ParticleOptions type, double speedY) {
         if (type != null) {
             Vec3 forward = player.getForward();
             world.addParticle(type, player.getX() - forward.x, player.getY() + 0.5D, player.getZ() - forward.z, 0.0D,
@@ -179,14 +187,14 @@ public class ArmorUtils {
 
         public void draw(GuiGraphics poseStack) {
             for (int i = 0; i < stringAmount; i++) {
-                Pair<Integer, Integer> coords = this.getStringCoord(i);
-                poseStack.drawString(mc.font, stringList.get(i), coords.getFirst(), coords.getSecond(), 0xFFFFFF,
+                IntIntPair coords = this.getStringCoord(i);
+                poseStack.drawString(mc.font, stringList.get(i), coords.firstInt(), coords.secondInt(), 0xFFFFFF,
                         false);
             }
         }
 
         @NotNull
-        private Pair<Integer, Integer> getStringCoord(int index) {
+        private IntIntPair getStringCoord(int index) {
             int posX;
             int posY;
             int fontHeight = mc.font.lineHeight;
@@ -215,7 +223,7 @@ public class ArmorUtils {
                 default -> throw new IllegalArgumentException(
                         "Armor Hud config hudLocation is improperly configured. Allowed values: [1,2,3,4]");
             }
-            return Pair.of(posX, posY);
+            return IntIntPair.of(posX, posY);
         }
 
         public void reset() {

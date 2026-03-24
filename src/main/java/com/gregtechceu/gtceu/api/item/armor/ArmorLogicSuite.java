@@ -22,6 +22,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.List;
@@ -95,7 +96,12 @@ public abstract class ArmorLogicSuite implements IArmorLogic, IItemHUDProvider {
         });
     }
 
-    public void addInfo(ItemStack itemStack, List<Component> lines) {}
+    public void addInfo(ItemStack itemStack, List<Component> lines) {
+        IElectricItem cont = GTCapabilityHelper.getElectricItem(itemStack);
+        if (cont != null) {
+            ElectricStats.addCurrentChargeTooltip(lines, cont.getCharge(), cont.getMaxCharge(), cont.getTier(), false);
+        }
+    }
 
     public InteractionResultHolder<ItemStack> onRightClick(Level Level, Player player, InteractionHand hand) {
         return InteractionResultHolder.pass(player.getItemInHand(hand));
@@ -106,9 +112,10 @@ public abstract class ArmorLogicSuite implements IArmorLogic, IItemHUDProvider {
         return type;
     }
 
+    @Nullable
     @Override
-    public ResourceLocation getArmorTexture(ItemStack stack, Entity entity, EquipmentSlot slot,
-                                            ArmorMaterial.Layer layer) {
+    public ResourceLocation getArmorTexture(ItemStack stack, Entity entity,
+                                            EquipmentSlot slot, ArmorMaterial.Layer layer) {
         return null;
     }
 

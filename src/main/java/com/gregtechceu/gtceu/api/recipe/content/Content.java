@@ -1,15 +1,22 @@
 package com.gregtechceu.gtceu.api.recipe.content;
 
 import com.gregtechceu.gtceu.api.capability.recipe.RecipeCapability;
+import com.gregtechceu.gtceu.api.recipe.chance.boost.ChanceBoostFunction;
+import com.gregtechceu.gtceu.api.recipe.chance.logic.ChanceLogic;
+import com.gregtechceu.gtceu.api.recipe.ingredient.IntProviderFluidIngredient;
+import com.gregtechceu.gtceu.api.recipe.ingredient.IntProviderIngredient;
+import com.gregtechceu.gtceu.utils.FormattingUtil;
+import com.gregtechceu.gtceu.utils.GradientUtil;
 
-import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.ExtraCodecs;
+import net.minecraft.util.Mth;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
@@ -17,61 +24,95 @@ import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-@AllArgsConstructor
 public class Content {
 
-    public RecipeCapability<?> capability;
     @Getter
-    public Object content;
-    public float chance;
-    public float tierChanceBoost;
-    @Nullable
-    public String slotName;
-    @Nullable
-    public String uiName;
+    public final Object content;
+    public final int chance;
+    public final int maxChance;
+    public final int tierChanceBoost;
 
-    public Content(Object content, float chance, float tierChanceBoost, @Nullable String slotName,
-                   @Nullable String uiName) {
+    public Content(Object content, int chance, int maxChance, int tierChanceBoost) {
         this.content = content;
         this.chance = chance;
-        this.tierChanceBoost = tierChanceBoost;
-        this.slotName = slotName == null || slotName.isEmpty() ? null : slotName;
-        this.uiName = uiName == null || uiName.isEmpty() ? null : uiName;
+        this.maxChance = maxChance;
+        this.tierChanceBoost = fixBoost(tierChanceBoost);
     }
 
     public static <T> Codec<Content> codec(RecipeCapability<T> capability) {
+        // spotless:off
         return RecordCodecBuilder.create(instance -> instance.group(
                 capability.serializer.codec().fieldOf("content").forGetter(val -> capability.of(val.content)),
-                ExtraCodecs.POSITIVE_FLOAT.optionalFieldOf("chance", 0.0f).forGetter(val -> val.chance),
-                ExtraCodecs.POSITIVE_FLOAT.optionalFieldOf("tierChanceBoost", 0.0f)
-                        .forGetter(val -> val.tierChanceBoost),
-                Codec.STRING.optionalFieldOf("slotName", "").forGetter(val -> val.slotName != null ? val.slotName : ""),
-                Codec.STRING.optionalFieldOf("uiName", "").forGetter(val -> val.uiName != null ? val.uiName : ""))
+                ExtraCodecs.NON_NEGATIVE_INT.optionalFieldOf("chance", ChanceLogic.getMaxChancedValue()).forGetter(val -> val.chance),
+                ExtraCodecs.NON_NEGATIVE_INT.optionalFieldOf("maxChance", ChanceLogic.getMaxChancedValue()).forGetter(val -> val.maxChance),
+                Codec.INT.optionalFieldOf("tierChanceBoost", 0).forGetter(val -> val.tierChanceBoost))
                 .apply(instance, Content::new));
+        // spotless:on
     }
 
-    public Content copy(RecipeCapability<?> capability, @Nullable ContentModifier modifier) {
-        if (modifier == null || chance == 0) {
-            return new Content(capability.copyContent(content), chance, tierChanceBoost, slotName, uiName);
+    /**
+     * Directly copies a Content.
+     */
+    public Content copy(RecipeCapability<?> capability) {
+        return new Content(capability.copyContent(content), chance, maxChance, tierChanceBoost);
+    }
+
+    /**
+     * Applies a {@link ContentModifier} to a Content. Does not apply the Modifier if the Content has a Chance.
+     */
+    public Content copy(RecipeCapability<?> capability, @NotNull ContentModifier modifier) {
+        if (modifier == ContentModifier.IDENTITY || chance < maxChance) {
+            return copy(capability);
         } else {
-            return new Content(capability.copyContent(content, modifier), chance, tierChanceBoost, slotName, uiName);
+            return new Content(capability.copyContent(content, modifier), chance, maxChance, tierChanceBoost);
         }
     }
 
-    public IGuiTexture createOverlay(boolean perTick) {
+    /**
+     * Applies a {@link ContentModifier} to a Content. Even if the content has a Chance.
+     */
+    public Content copyChanced(RecipeCapability<?> capability, @NotNull ContentModifier modifier) {
+        if (modifier == ContentModifier.IDENTITY) {
+            return copy(capability);
+        } else {
+            return new Content(capability.copyContent(content, modifier), chance, maxChance, tierChanceBoost);
+        }
+    }
+
+    public boolean isChanced() {
+        return chance > 0 && chance < maxChance;
+    }
+
+    /**
+     * Attempts to fix and round the given chance boost due to potential differences
+     * between the max chance and {@link ChanceLogic#getMaxChancedValue()}.
+     * <br />
+     * The worst case would be {@code 5,001 / 10,000} , meaning the boost would
+     * have to be halved to have the intended effect.
+     *
+     * @param chanceBoost the chance boost to be fixed
+     * @return the fixed chance boost
+     */
+    private int fixBoost(int chanceBoost) {
+        float error = (float) ChanceLogic.getMaxChancedValue() / maxChance;
+        int fixed = Math.round(Math.abs(chanceBoost) / error);
+        return chanceBoost < 0 ? -fixed : fixed;
+    }
+
+    public IGuiTexture createOverlay(boolean perTick, int recipeTier, int chanceTier,
+                                     @Nullable ChanceBoostFunction function) {
         return new IGuiTexture() {
 
             @Override
             @OnlyIn(Dist.CLIENT)
             public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
-                drawChance(graphics, x, y, width, height);
-                if (LDLib.isEmiLoaded()) {
-                    drawEmiAmount(graphics, x, y, width, height);
-                }
+                drawChance(graphics, x, y, width, height, recipeTier, chanceTier, function);
+                drawRangeAmount(graphics, x, y, width, height);
+                drawFluidAmount(graphics, x, y, width, height);
                 if (perTick) {
                     drawTick(graphics, x, y, width, height);
                 }
@@ -80,35 +121,71 @@ public class Content {
     }
 
     @OnlyIn(Dist.CLIENT)
-    public void drawEmiAmount(GuiGraphics graphics, float x, float y, int width, int height) {
-        if (content instanceof SizedFluidIngredient ingredient) {
+    public void drawRangeAmount(GuiGraphics graphics, float x, float y, int width, int height) {
+        if (content instanceof IntProviderIngredient ingredient) {
             graphics.pose().pushPose();
             graphics.pose().translate(0, 0, 400);
             graphics.pose().scale(0.5f, 0.5f, 1);
-            long amount = ingredient.ingredient().hasNoFluids() ? 0 : ingredient.amount();
-            String s;
-            if (amount >= 1000) {
-                amount /= 1000;
-                s = amount + "B";
-            } else {
-                s = amount + "mB";
-            }
+            int min = ingredient.getCountProvider().getMinValue();
+            int max = ingredient.getCountProvider().getMaxValue();
+            String s = String.format("%s-%s", min, max);
+            int color = 0xFFFFFF;
             Font fontRenderer = Minecraft.getInstance().font;
+            // 5 == max num of characters that fit in a slot at 0.5x render size
+            if (s.length() > 5) {
+                s = "X-Y";
+                color = ChatFormatting.GOLD.getColor(); // Orange?
+            }
             graphics.drawString(fontRenderer, s, (int) ((x + (width / 3f)) * 2 - fontRenderer.width(s) + 21),
-                    (int) ((y + (height / 3f) + 6) * 2), 0xFFFFFF, true);
+                    (int) ((y + (height / 3f) + 6) * 2), color, true);
             graphics.pose().popPose();
         }
     }
 
     @OnlyIn(Dist.CLIENT)
-    public void drawChance(GuiGraphics graphics, float x, float y, int width, int height) {
-        if (chance == 1) return;
+    public void drawFluidAmount(GuiGraphics graphics, float x, float y, int width, int height) {
+        if (content instanceof SizedFluidIngredient ingredient) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(0, 0, 400);
+            graphics.pose().scale(0.5f, 0.5f, 1);
+            Font fontRenderer = Minecraft.getInstance().font;
+            int color;
+            String s;
+            if (ingredient.ingredient() instanceof IntProviderFluidIngredient) {
+                // with only 5 characters worth of space, that's not enough for a fluid range
+                color = ChatFormatting.GOLD.getColor();
+                s = "X-Y";
+            } else {
+                int amount = ingredient.amount();
+                color = 0xFFFFFF;
+                s = FormattingUtil.formatBuckets(amount);
+                if (fontRenderer.width(s) > 32)
+                    s = FormattingUtil.formatNumberReadable(amount, true, FormattingUtil.DECIMAL_FORMAT_1F, "B");
+                if (fontRenderer.width(s) > 32)
+                    s = FormattingUtil.formatNumberReadable(amount, true, FormattingUtil.DECIMAL_FORMAT_0F, "B");
+            }
+            graphics.drawString(fontRenderer, s, (int) ((x + (width / 3f)) * 2 - fontRenderer.width(s) + 22),
+                    (int) ((y + (height / 3f) + 6) * 2), color, true);
+            graphics.pose().popPose();
+        }
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    public void drawChance(GuiGraphics graphics, float x, float y, int width, int height, int recipeTier,
+                           int chanceTier, @Nullable ChanceBoostFunction function) {
+        if (chance == ChanceLogic.getMaxChancedValue()) return;
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 400);
         graphics.pose().scale(0.5f, 0.5f, 1);
-        String s = chance == 0 ? LocalizationUtils.format("gtceu.gui.content.chance_0_short") :
-                String.format("%.2f", chance * 100) + "%";
-        int color = chance == 0 ? 0xff0000 : 0xFFFF00;
+        var func = function == null ? ChanceBoostFunction.NONE : function;
+        int chance = func.getBoostedChance(this, recipeTier, chanceTier);
+        float chanceFloat = 1f * chance / this.maxChance;
+        String percent = FormattingUtil.formatNumber2Places(100 * chanceFloat);
+
+        String s = chance == 0 ? LocalizationUtils.format("gtceu.gui.content.chance_nc_short") :
+                percent + "%";
+
+        int color = chance == 0 ? 0xFF0000 : GradientUtil.toRGB(Mth.lerp(chanceFloat, 29f, 167f), 100f, 50f);
         Font fontRenderer = Minecraft.getInstance().font;
         graphics.drawString(fontRenderer, s, (int) ((x + (width / 3f)) * 2 - fontRenderer.width(s) + 23),
                 (int) ((y + (height / 3f) + 6) * 2 - height), color, true);
@@ -125,7 +202,18 @@ public class Content {
         int color = 0xFFFF00;
         Font fontRenderer = Minecraft.getInstance().font;
         graphics.drawString(fontRenderer, s, (int) ((x + (width / 3f)) * 2 - fontRenderer.width(s) + 23),
-                (int) ((y + (height / 3f) + 6) * 2 - height + (chance == 1 ? 0 : 10)), color);
+                (int) ((y + (height / 3f) + 6) * 2 - height + (chance == ChanceLogic.getMaxChancedValue() ? 0 : 10)),
+                color);
         graphics.pose().popPose();
+    }
+
+    @Override
+    public String toString() {
+        return "Content{" +
+                "content=" + content +
+                ", chance=" + chance +
+                ", maxChance=" + maxChance +
+                ", tierChanceBoost=" + tierChanceBoost +
+                '}';
     }
 }

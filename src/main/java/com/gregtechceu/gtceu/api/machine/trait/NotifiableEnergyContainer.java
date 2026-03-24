@@ -1,15 +1,20 @@
 package com.gregtechceu.gtceu.api.machine.trait;
 
+import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
 import com.gregtechceu.gtceu.api.capability.IElectricItem;
 import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
+import com.gregtechceu.gtceu.api.capability.compat.FeCompat;
 import com.gregtechceu.gtceu.api.capability.recipe.EURecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.capability.recipe.RecipeCapability;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.feature.IExplosionMachine;
+import com.gregtechceu.gtceu.api.misc.EnergyContainerList;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
+import com.gregtechceu.gtceu.api.recipe.ingredient.EnergyStack;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.utils.GTUtil;
 
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
@@ -17,18 +22,19 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
 import net.minecraft.core.Direction;
-import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Predicate;
 
-public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<Long> implements IEnergyContainer {
+public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<EnergyStack> implements IEnergyContainer {
 
     public static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             NotifiableEnergyContainer.class, NotifiableRecipeHandlerTrait.MANAGED_FIELD_HOLDER);
@@ -170,7 +176,7 @@ public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<Long
                 if (energyContainer != null && energyContainer.inputsEnergy(oppositeSide)) {
                     amperesUsed += energyContainer.acceptEnergyFromNetwork(oppositeSide, outputVoltage,
                             outputAmperes - amperesUsed);
-                    if (amperesUsed == outputAmperes) break;
+                    if (amperesUsed >= outputAmperes) break;
                 }
             }
             if (amperesUsed > 0) {
@@ -188,7 +194,15 @@ public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<Long
 
         var electricItem = GTCapabilityHelper.getElectricItem(stackInSlot);
         if (electricItem != null) {
-            if (handleElectricItem(stackInSlot, electricItem, simulate)) {
+            if (handleElectricItem(electricItem, simulate)) {
+                if (!simulate) {
+                    itemHandler.setStackInSlot(slotIndex, stackInSlot);
+                }
+                return true;
+            }
+        } else if (ConfigHolder.INSTANCE.compat.energy.nativeEUToFE) {
+            IEnergyStorage energyStorage = GTCapabilityHelper.getForgeEnergyItem(stackInSlot);
+            if (energyStorage != null && handleForgeEnergyItem(energyStorage, simulate)) {
                 if (!simulate) {
                     itemHandler.setStackInSlot(slotIndex, stackInSlot);
                 }
@@ -198,18 +212,18 @@ public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<Long
         return false;
     }
 
-    private boolean handleElectricItem(ItemStack stack, IElectricItem electricItem, boolean simulate) {
-        var machineTier = GTUtil.getTierByVoltage(Math.max(getInputVoltage(), getOutputVoltage()));
-        var chargeTier = Math.min(machineTier, electricItem.getTier());
-        var chargePercent = getEnergyStored() / (getEnergyCapacity() * 1.0);
+    private boolean handleElectricItem(IElectricItem electricItem, boolean simulate) {
+        int machineTier = GTUtil.getTierByVoltage(Math.max(getInputVoltage(), getOutputVoltage()));
+        int chargeTier = Math.min(machineTier, electricItem.getTier());
+        double chargePercent = (double) getEnergyStored() / (getEnergyCapacity() * 1.0);
 
         // Check if the item is a battery (or similar), and if we can receive some amount of energy
         if (electricItem.canProvideChargeExternally() && getEnergyCanBeInserted() > 0) {
 
-            // Drain from the battery if we are below half energy capacity, and if the tier matches
-            if (chargePercent <= 0.5 && chargeTier == machineTier) {
-                long dischargedBy = electricItem.discharge(getEnergyCanBeInserted(), machineTier, false, true,
-                        simulate);
+            // Drain from the battery if we are below 1/3rd energy capacity, and if the tier matches
+            if (chargePercent <= 0.33 && chargeTier == machineTier) {
+                long dischargedBy = electricItem.discharge(getEnergyCanBeInserted(), machineTier,
+                        false, true, simulate);
                 if (!simulate) {
                     addEnergy(dischargedBy);
                 }
@@ -217,9 +231,23 @@ public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<Long
             }
         }
 
-        // Else, check if we have above 65% power
-        if (chargePercent > 0.65) {
-            long chargedBy = electricItem.charge(getEnergyStored(), chargeTier, false, simulate);
+        // Else, check if we have above 2/3rds charge
+        if (chargePercent > 0.66) {
+            long chargedBy = electricItem.charge(getEnergyStored(), chargeTier, false, false);
+            if (!simulate) {
+                removeEnergy(chargedBy);
+            }
+            return chargedBy > 0;
+        }
+        return false;
+    }
+
+    private boolean handleForgeEnergyItem(IEnergyStorage energyStorage, boolean simulate) {
+        int machineTier = GTUtil.getTierByVoltage(Math.max(getInputVoltage(), getOutputVoltage()));
+        double chargePercent = getEnergyStored() / (getEnergyCapacity() * 1.0);
+
+        if (chargePercent > 0.66) { // 2/3rds full
+            long chargedBy = FeCompat.insertEu(energyStorage, GTValues.V[machineTier], simulate);
             if (!simulate) {
                 removeEnergy(chargedBy);
             }
@@ -277,29 +305,38 @@ public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<Long
     }
 
     @Override
-    public List<Long> handleRecipeInner(IO io, GTRecipe recipe, List<Long> left, @Nullable String slotName,
-                                        boolean simulate) {
-        IEnergyContainer capability = this;
-        long sum = left.stream().reduce(0L, Long::sum);
-        if (io == IO.IN) {
-            var canOutput = capability.getEnergyStored();
-            if (!simulate) {
-                capability.addEnergy(-Math.min(canOutput, sum));
+    public List<EnergyStack> handleRecipeInner(IO io, GTRecipe recipe, List<EnergyStack> left, boolean simulate) {
+        for (var it = left.listIterator(); it.hasNext();) {
+            EnergyStack stack = it.next();
+            if (stack.isEmpty()) {
+                it.remove();
+                continue;
             }
-            sum = sum - canOutput;
-        } else if (io == IO.OUT) {
-            long canInput = capability.getEnergyCapacity() - capability.getEnergyStored();
+
+            long totalEU = stack.getTotalEU();
+            long canTransfer = Math.min(totalEU, (io == IO.IN ? this.getEnergyStored() :
+                    this.getEnergyCapacity() - this.getEnergyStored()));
             if (!simulate) {
-                capability.addEnergy(Math.min(canInput, sum));
+                // invert the EU value if we're doing inputs (inputting *to the recipe* -> removing from handlers)
+                this.changeEnergy(io == IO.IN ? -canTransfer : canTransfer);
             }
-            sum = sum - canInput;
+
+            totalEU -= canTransfer;
+            if (totalEU <= 0) {
+                it.remove();
+            } else {
+                it.set(new EnergyStack(totalEU));
+            }
+
         }
-        return sum <= 0 ? null : Collections.singletonList(sum);
+
+        return left.isEmpty() ? null : left;
     }
 
     @Override
-    public List<Object> getContents() {
-        return List.of(energyStored);
+    public @NotNull List<Object> getContents() {
+        long amperage = Math.max(getInputAmperage(), getOutputAmperage());
+        return Collections.singletonList(EnergyContainerList.calculateVoltageAmperage(getEnergyStored(), amperage));
     }
 
     @Override
@@ -308,7 +345,7 @@ public class NotifiableEnergyContainer extends NotifiableRecipeHandlerTrait<Long
     }
 
     @Override
-    public RecipeCapability<Long> getCapability() {
+    public RecipeCapability<EnergyStack> getCapability() {
         return EURecipeCapability.CAP;
     }
 }

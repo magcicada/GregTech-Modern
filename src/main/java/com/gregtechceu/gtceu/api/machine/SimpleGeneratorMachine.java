@@ -8,9 +8,11 @@ import com.gregtechceu.gtceu.api.machine.feature.IFancyUIMachine;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableEnergyContainer;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
-import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
+import com.gregtechceu.gtceu.api.recipe.content.ContentModifier;
+import com.gregtechceu.gtceu.api.recipe.modifier.ModifierFunction;
+import com.gregtechceu.gtceu.api.recipe.modifier.ParallelLogic;
+import com.gregtechceu.gtceu.api.recipe.modifier.RecipeModifier;
 import com.gregtechceu.gtceu.api.recipe.ui.GTRecipeTypeUI;
-import com.gregtechceu.gtceu.data.recipe.GTRecipeModifiers;
 
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.utils.Position;
@@ -21,26 +23,15 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 
 import com.google.common.collect.Tables;
-import com.mojang.blaze3d.MethodsReturnNonnullByDefault;
 import it.unimi.dsi.fastutil.ints.Int2IntFunction;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.function.BiFunction;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-/**
- * @author KilaBash
- * @date 2023/3/17
- * @implNote SimpleGeneratorMachine
- */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class SimpleGeneratorMachine extends WorkableTieredMachine
                                     implements IFancyUIMachine, IEnvironmentalHazardEmitter {
 
@@ -58,6 +49,7 @@ public class SimpleGeneratorMachine extends WorkableTieredMachine
                                   Object... args) {
         this(holder, tier, 0.25f, tankScalingFunction, args);
     }
+
     //////////////////////////////////////
     // ***** Initialization ******//
     //////////////////////////////////////
@@ -75,11 +67,6 @@ public class SimpleGeneratorMachine extends WorkableTieredMachine
     }
 
     @Override
-    protected long getMaxInputOutputAmperage() {
-        return 1L;
-    }
-
-    @Override
     public int tintColor(int index) {
         if (index == 2) {
             return GTValues.VC[getTier()];
@@ -91,21 +78,36 @@ public class SimpleGeneratorMachine extends WorkableTieredMachine
     // ****** RECIPE LOGIC *******//
     //////////////////////////////////////
 
-    @Nullable
-    public static GTRecipe recipeModifier(MetaMachine machine, @NotNull GTRecipe recipe) {
-        if (machine instanceof SimpleGeneratorMachine generator) {
-            var EUt = RecipeHelper.getOutputEUt(recipe);
-            if (EUt > 0) {
-                var maxParallel = (int) (Math.min(generator.getOverclockVoltage(),
-                        GTValues.V[generator.getOverclockTier()]) / EUt);
-                return GTRecipeModifiers.fastParallel(generator, recipe, maxParallel, false).getFirst();
-            }
+    /**
+     * Recipe Modifier for <b>Simple Generator Machines</b> - can be used as a valid {@link RecipeModifier}
+     * <p>
+     * Recipe is fast parallelized up to {@code desiredEUt / recipeEUt} times.
+     * </p>
+     * 
+     * @param machine a {@link SimpleGeneratorMachine}
+     * @param recipe  recipe
+     * @return A {@link ModifierFunction} for the given Simple Generator
+     */
+    public static ModifierFunction recipeModifier(@NotNull MetaMachine machine, @NotNull GTRecipe recipe) {
+        if (!(machine instanceof SimpleGeneratorMachine generator)) {
+            return RecipeModifier.nullWrongType(SimpleGeneratorMachine.class, machine);
         }
-        return null;
+        long EUt = recipe.getOutputEUt().getTotalEU();
+        if (EUt <= 0) return ModifierFunction.NULL;
+
+        int maxParallel = (int) (generator.getOverclockVoltage() / EUt);
+        int parallels = ParallelLogic.getParallelAmountFast(generator, recipe, maxParallel);
+
+        return ModifierFunction.builder()
+                .inputModifier(ContentModifier.multiplier(parallels))
+                .outputModifier(ContentModifier.multiplier(parallels))
+                .eutMultiplier(parallels)
+                .parallels(parallels)
+                .build();
     }
 
     @Override
-    public boolean dampingWhenWaiting() {
+    public boolean regressWhenWaiting() {
         return false;
     }
 
@@ -120,10 +122,16 @@ public class SimpleGeneratorMachine extends WorkableTieredMachine
         spreadEnvironmentalHazard();
     }
 
+    @Override
+    public long getDisplayRecipeVoltage() {
+        return GTValues.V[this.tier];
+    }
+
     //////////////////////////////////////
     // *********** GUI ***********//
     //////////////////////////////////////
 
+    @SuppressWarnings("UnstableApiUsage")
     public static BiFunction<ResourceLocation, GTRecipeType, EditableMachineUI> EDITABLE_UI_CREATOR = Util
             .memoize((path, recipeType) -> new EditableMachineUI("generator", path, () -> {
                 WidgetGroup template = recipeType.getRecipeUI().createEditableUITemplate(false, false).createDefault();

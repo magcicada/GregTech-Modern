@@ -1,8 +1,9 @@
 package com.gregtechceu.gtceu.integration.jade;
 
 import com.gregtechceu.gtceu.GTCEu;
+import com.gregtechceu.gtceu.api.blockentity.MetaMachineBlockEntity;
 import com.gregtechceu.gtceu.common.blockentity.FluidPipeBlockEntity;
-import com.gregtechceu.gtceu.data.item.GTItems;
+import com.gregtechceu.gtceu.common.data.GTMaterialItems;
 import com.gregtechceu.gtceu.integration.jade.provider.*;
 
 import net.minecraft.world.item.Item;
@@ -34,12 +35,25 @@ public class GTJadePlugin implements IWailaPlugin {
         registration.registerBlockDataProvider(new MultiblockStructureProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new MaintenanceBlockProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new ExhaustVentBlockProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new SteamBoilerBlockProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new AutoOutputBlockProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new CableBlockProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new MachineModeProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new StainedColorProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new HazardCleanerBlockProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new TransformerBlockProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new PrimitivePumpBlockProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new DataBankBlockProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new EnergyConverterModeProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new BatteryStorageInfoProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new LDPEndpointProvider(), BlockEntity.class);
+        if (GTCEu.Mods.isAE2Loaded()) {
+            registration.registerBlockDataProvider(new MEPatternBufferProvider(), BlockEntity.class);
+            registration.registerBlockDataProvider(new MEPatternBufferProxyProvider(), BlockEntity.class);
+        }
 
+        registration.registerItemStorage(GTItemStorageProvider.INSTANCE, MetaMachineBlockEntity.class);
+        registration.registerFluidStorage(GTFluidStorageProvider.INSTANCE, MetaMachineBlockEntity.class);
         registration.registerFluidStorage(FluidPipeStorageProvider.INSTANCE, FluidPipeBlockEntity.class);
     }
 
@@ -54,17 +68,30 @@ public class GTJadePlugin implements IWailaPlugin {
         registration.registerBlockComponent(new MultiblockStructureProvider(), Block.class);
         registration.registerBlockComponent(new MaintenanceBlockProvider(), Block.class);
         registration.registerBlockComponent(new ExhaustVentBlockProvider(), Block.class);
+        registration.registerBlockComponent(new SteamBoilerBlockProvider(), Block.class);
         registration.registerBlockComponent(new AutoOutputBlockProvider(), Block.class);
         registration.registerBlockComponent(new CableBlockProvider(), Block.class);
         registration.registerBlockComponent(new MachineModeProvider(), Block.class);
         registration.registerBlockComponent(new StainedColorProvider(), Block.class);
         registration.registerBlockComponent(new HazardCleanerBlockProvider(), Block.class);
+        registration.registerBlockComponent(new TransformerBlockProvider(), Block.class);
+        registration.registerBlockComponent(new PrimitivePumpBlockProvider(), Block.class);
+        registration.registerBlockComponent(new DataBankBlockProvider(), Block.class);
+        registration.registerBlockComponent(new LDPEndpointProvider(), Block.class);
+        registration.registerBlockComponent(new EnergyConverterModeProvider(), Block.class);
+        registration.registerBlockComponent(new BatteryStorageInfoProvider(), Block.class);
+        if (GTCEu.Mods.isAE2Loaded()) {
+            registration.registerBlockComponent(new MEPatternBufferProvider(), Block.class);
+            registration.registerBlockComponent(new MEPatternBufferProxyProvider(), Block.class);
+        }
 
+        registration.registerItemStorageClient(GTItemStorageProvider.INSTANCE);
+        registration.registerFluidStorageClient(GTFluidStorageProvider.INSTANCE);
         registration.registerFluidStorageClient(FluidPipeStorageProvider.INSTANCE);
     }
 
     static {
-        GTItems.TOOL_ITEMS.columnMap().forEach((type, map) -> {
+        GTMaterialItems.TOOL_ITEMS.columnMap().forEach((type, map) -> {
             if (type.toolDefinition.getTool().rules().isEmpty() || map.isEmpty()) return;
 
             List<Item> tools = map
@@ -75,7 +102,7 @@ public class GTJadePlugin implements IWailaPlugin {
                     .map(ItemProviderEntry::asItem)
                     .toList();
             if (tools.isEmpty()) return;
-            HarvestToolProvider.registerHandler(SimpleToolHandler.create(GTCEu.id(type.name), true, tools));
+            HarvestToolProvider.registerHandler(SimpleToolHandler.create(GTCEu.id(type.name), tools, true));
         });
     }
 }

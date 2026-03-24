@@ -15,21 +15,19 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.IItemHandler;
 
 import lombok.Getter;
+import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Iterator;
 import java.util.Map;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
 public class RobotArmCover extends ConveyorCover {
 
     public static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(RobotArmCover.class,
@@ -42,15 +40,20 @@ public class RobotArmCover extends ConveyorCover {
 
     @Persisted
     @Getter
+    @Setter
     protected int globalTransferLimit;
     protected int itemsTransferBuffered;
 
     private IntInputWidget stackSizeInput;
 
-    public RobotArmCover(CoverDefinition definition, ICoverable coverHolder, Direction attachedSide, int tier) {
-        super(definition, coverHolder, attachedSide, tier);
-
+    public RobotArmCover(CoverDefinition definition, ICoverable coverHolder, Direction attachedSide, int tier,
+                         int maxTransferRate) {
+        super(definition, coverHolder, attachedSide, tier, maxTransferRate);
         setTransferMode(TransferMode.TRANSFER_ANY);
+    }
+
+    public RobotArmCover(CoverDefinition definition, ICoverable coverHolder, Direction attachedSide, int tier) {
+        this(definition, coverHolder, attachedSide, tier, CONVEYOR_SCALING.applyAsInt(tier));
     }
 
     @Override
@@ -178,7 +181,7 @@ public class RobotArmCover extends ConveyorCover {
         group.addWidget(this.stackSizeInput);
     }
 
-    private void setTransferMode(TransferMode transferMode) {
+    public void setTransferMode(TransferMode transferMode) {
         this.transferMode = transferMode;
 
         configureStackSizeInput();
@@ -214,5 +217,19 @@ public class RobotArmCover extends ConveyorCover {
             return true;
 
         return !this.filterHandler.getFilter().supportsAmounts();
+    }
+
+    @Override
+    public CompoundTag copyConfig(CompoundTag tag) {
+        tag.putInt("transferMode", transferMode.ordinal());
+        tag.putInt("transferLimit", globalTransferLimit);
+        return super.copyConfig(tag);
+    }
+
+    @Override
+    public void pasteConfig(ServerPlayer player, CompoundTag tag) {
+        setTransferMode(TransferMode.values()[tag.getInt("transferMode")]);
+        setGlobalTransferLimit(tag.getInt("transferLimit"));
+        super.pasteConfig(player, tag);
     }
 }

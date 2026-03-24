@@ -8,6 +8,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 import org.jetbrains.annotations.NotNull;
 import snownee.jade.api.Accessor;
@@ -50,6 +51,9 @@ public enum FluidPipeStorageProvider implements IServerExtensionProvider<Compoun
 
     @Override
     public boolean shouldRequestData(Accessor<?> accessor) {
+        if (accessor.getHitResult().getType() != HitResult.Type.BLOCK) {
+            return false;
+        }
         if (!(accessor.getHitResult() instanceof BlockHitResult blockHitResult)) {
             return false;
         }

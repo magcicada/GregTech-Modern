@@ -4,6 +4,7 @@ import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.steam.SteamBoilerMachine;
 import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.utils.GTUtil;
 
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
@@ -13,6 +14,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Player;
 
+import org.jetbrains.annotations.NotNull;
+
 public class SteamSolarBoiler extends SteamBoilerMachine {
 
     public SteamSolarBoiler(IMachineBlockEntity holder, boolean isHighPressure, Object... args) {
@@ -20,13 +23,14 @@ public class SteamSolarBoiler extends SteamBoilerMachine {
     }
 
     @Override
-    public Direction getFrontFacing() {
+    public @NotNull Direction getFrontFacing() {
         return Direction.UP;
     }
 
     @Override
     protected long getBaseSteamOutput() {
-        return isHighPressure ? 360 : 120;
+        return isHighPressure ? ConfigHolder.INSTANCE.machines.smallBoilers.hpSolarBoilerBaseOutput :
+                ConfigHolder.INSTANCE.machines.smallBoilers.solarBoilerBaseOutput;
     }
 
     @Override

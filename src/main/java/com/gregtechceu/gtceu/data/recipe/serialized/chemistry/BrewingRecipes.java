@@ -1,16 +1,16 @@
 package com.gregtechceu.gtceu.data.recipe.serialized.chemistry;
 
-import com.gregtechceu.gtceu.api.material.material.Material;
+import com.gregtechceu.gtceu.api.data.chemical.material.Material;
 
 import net.minecraft.data.recipes.RecipeOutput;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
-import static com.gregtechceu.gtceu.api.tag.TagPrefix.dust;
-import static com.gregtechceu.gtceu.data.item.GTItems.BIO_CHAFF;
-import static com.gregtechceu.gtceu.data.material.GTMaterials.*;
-import static com.gregtechceu.gtceu.data.recipe.GTRecipeTypes.BREWING_RECIPES;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.dust;
+import static com.gregtechceu.gtceu.common.data.GTItems.BIO_CHAFF;
+import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
+import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.BREWING_RECIPES;
 
 public class BrewingRecipes {
 
@@ -56,6 +56,24 @@ public class BrewingRecipes {
                 .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
         BREWING_RECIPES.recipeBuilder("biomass_from_bio_chaff").EUt(4).duration(128).inputItems(BIO_CHAFF)
                 .inputFluids(Water.getFluid(750)).outputFluids(Biomass.getFluid(750)).save(provider);
-        // TODO 1.13+ plants
+        BREWING_RECIPES.recipeBuilder("biomass_from_kelp").duration(160).EUt(3).inputItems(Blocks.KELP.asItem())
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
+        BREWING_RECIPES.recipeBuilder("biomass_from_sea_pickle").duration(160).EUt(3)
+                .inputItems(Blocks.SEA_PICKLE.asItem())
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
+        BREWING_RECIPES.recipeBuilder("biomass_from_sweet_berries").duration(160).EUt(3).inputItems(Items.SWEET_BERRIES)
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
+        BREWING_RECIPES.recipeBuilder("biomass_from_crimson_fungus").duration(160).EUt(3)
+                .inputItems(Items.CRIMSON_FUNGUS)
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
+        BREWING_RECIPES.recipeBuilder("biomass_from_warped_fungus").duration(160).EUt(3).inputItems(Items.WARPED_FUNGUS)
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
+        BREWING_RECIPES.recipeBuilder("biomass_from_glow_berries").duration(160).EUt(3).inputItems(Items.GLOW_BERRIES)
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
+        BREWING_RECIPES.recipeBuilder("biomass_from_pitcher_pod").duration(160).EUt(3).inputItems(Items.PITCHER_POD)
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
+        BREWING_RECIPES.recipeBuilder("biomass_from_torchflower_seeds").duration(160).EUt(3)
+                .inputItems(Items.TORCHFLOWER_SEEDS)
+                .inputFluids(Water.getFluid(20)).outputFluids(Biomass.getFluid(20)).save(provider);
     }
 }

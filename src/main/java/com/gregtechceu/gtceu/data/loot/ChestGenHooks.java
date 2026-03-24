@@ -4,9 +4,9 @@ import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.registry.GTRegistries;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.core.mixins.LootPoolAccessor;
+import com.gregtechceu.gtceu.utils.GTMath;
 import com.gregtechceu.gtceu.utils.ItemStackHashStrategy;
 
-import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -42,8 +42,8 @@ import java.util.function.Consumer;
 
 public final class ChestGenHooks {
 
-    private static final Map<ResourceKey<LootTable>, List<GTLootEntryItem>> lootEntryItems = new Object2ObjectOpenHashMap<>();
-    private static final Map<ResourceKey<LootTable>, NumberProvider> rollValues = new Object2ObjectOpenHashMap<>();
+    private static final Map<ResourceLocation, List<GTLootEntryItem>> lootEntryItems = new Object2ObjectOpenHashMap<>();
+    private static final Map<ResourceLocation, NumberProvider> rollValues = new Object2ObjectOpenHashMap<>();
 
     private static final List<LootItemCondition> NO_CONDITIONS = List.of();
 
@@ -51,6 +51,7 @@ public final class ChestGenHooks {
 
     public static void init() {
         NeoForge.EVENT_BUS.register(ChestGenHooks.class);
+        RandomWeightLootFunction.init();
     }
 
     @SubscribeEvent
@@ -90,18 +91,18 @@ public final class ChestGenHooks {
         String modid = Objects.requireNonNull(BuiltInRegistries.ITEM.getKey(stack.getItem())).getNamespace();
         String entryName = createEntryName(stack, modid, weight, lootFunction);
         GTLootEntryItem itemEntry = new GTLootEntryItem(stack, weight, lootFunction, entryName);
-        lootEntryItems.computeIfAbsent(lootTable, $ -> new ArrayList<>()).add(itemEntry);
+        lootEntryItems.computeIfAbsent(lootTable.location(), $ -> new ArrayList<>()).add(itemEntry);
     }
 
-    public static void addRolls(ResourceKey<LootTable> tableLocation, int minAdd, int maxAdd) {
-        rollValues.put(tableLocation, UniformGenerator.between(minAdd, maxAdd));
+    public static void addRolls(ResourceKey<LootTable> lootTable, int minAdd, int maxAdd) {
+        rollValues.put(lootTable.location(), UniformGenerator.between(minAdd, maxAdd));
     }
 
     private static final ItemStackHashStrategy HASH_STRATEGY = ItemStackHashStrategy.comparingAllButCount();
 
     private static @NotNull String createEntryName(@NotNull ItemStack stack, @NotNull String modid, int weight,
                                                    @NotNull RandomWeightLootFunction function) {
-        int hashCode = Objects.hash(HASH_STRATEGY.hashCode(stack), modid, weight, function.getMinAmount(),
+        int hashCode = GTMath.hashInts(HASH_STRATEGY.hashCode(stack), modid.hashCode(), weight, function.getMinAmount(),
                 function.getMaxAmount());
         return String.format("#%s:loot_%s", modid, hashCode);
     }
@@ -118,7 +119,7 @@ public final class ChestGenHooks {
             this.entryName = entryName;
         }
 
-        public void createItemStack(Consumer<ItemStack> stackConsumer, LootContext lootContext) {
+        public void createItemStack(Consumer<ItemStack> stackConsumer, @NotNull LootContext lootContext) {
             stackConsumer.accept(this.stack.copy());
         }
 
@@ -154,22 +155,21 @@ public final class ChestGenHooks {
             this.maxAmount = maxAmount;
         }
 
-        public static void init() {
-            // Do nothing here. This just ensures that TYPE is being set immediately when called.
-        }
+        public static void init() {}
 
         @Override
-        public LootItemFunctionType<RandomWeightLootFunction> getType() {
+        public @NotNull LootItemFunctionType<RandomWeightLootFunction> getType() {
             return TYPE;
         }
 
         @Override
-        protected ItemStack run(ItemStack itemStack, LootContext context) {
+        protected @NotNull ItemStack run(@NotNull ItemStack itemStack, @NotNull LootContext context) {
             if (stack.getDamageValue() != 0) {
                 itemStack.setDamageValue(stack.getDamageValue());
             }
-            DataComponentPatch patch = stack.getComponentsPatch();
-            itemStack.applyComponents(patch);
+            if (!stack.isComponentsPatchEmpty()) {
+                itemStack.applyComponents(stack.getComponentsPatch());
+            }
 
             if (minAmount == maxAmount) {
                 itemStack.setCount(minAmount);

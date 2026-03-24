@@ -13,11 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * @author KilaBash
- * @date 2023/3/3
- * @implNote WrappedSoundEntry
- */
 public class WrappedSoundEntry extends SoundEntry {
 
     private final List<ConfiguredSoundEvent> wrappedEvents;
@@ -49,12 +44,11 @@ public class WrappedSoundEntry extends SoundEntry {
 
     @Override
     public SoundEvent getMainEvent() {
-        return compiledEvents.get(0).event();
+        return compiledEvents.getFirst().event();
     }
 
     protected ResourceLocation getIdOf(int i) {
-        return ResourceLocation.fromNamespaceAndPath(id.getNamespace(),
-                i == 0 ? id.getPath() : id.getPath() + "_compounded_" + i);
+        return id.withPath(path -> i == 0 ? path : path + "_compounded_" + i);
     }
 
     @Override

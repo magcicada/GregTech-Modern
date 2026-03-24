@@ -2,9 +2,8 @@ package com.gregtechceu.gtceu.common.item.tool.behavior;
 
 import com.gregtechceu.gtceu.api.item.tool.behavior.IToolBehavior;
 import com.gregtechceu.gtceu.api.item.tool.behavior.ToolBehaviorType;
-import com.gregtechceu.gtceu.data.tools.GTToolBehaviors;
+import com.gregtechceu.gtceu.common.data.GTToolBehaviors;
 
-import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.Item;
@@ -12,19 +11,19 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 
 import com.mojang.serialization.Codec;
+import io.netty.buffer.ByteBuf;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
 /**
- * @see ToolE#onHarvestDrops(BlockEvent.HarvestDropsEvent)
+ * @see com.gregtechceu.gtceu.common.item.tool.ToolEventHandlers#onHarvestDrops
  */
 public class HarvestIceBehavior implements IToolBehavior<HarvestIceBehavior> {
 
     public static final HarvestIceBehavior INSTANCE = new HarvestIceBehavior();
     public static final Codec<HarvestIceBehavior> CODEC = Codec.unit(INSTANCE);
-    public static final StreamCodec<RegistryFriendlyByteBuf, HarvestIceBehavior> STREAM_CODEC = StreamCodec
-            .unit(INSTANCE);
+    public static final StreamCodec<ByteBuf, HarvestIceBehavior> STREAM_CODEC = StreamCodec.unit(INSTANCE);
 
     protected HarvestIceBehavior() {/**/}
 

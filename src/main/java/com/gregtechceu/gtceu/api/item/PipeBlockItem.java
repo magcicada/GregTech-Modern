@@ -6,34 +6,43 @@ import com.gregtechceu.gtceu.api.pipenet.IPipeNode;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.utils.GTUtil;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
-import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.List;
 
-/**
- * @author KilaBash
- * @date 2023/6/23
- * @implNote PipeBlockItem
- */
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
 public class PipeBlockItem extends BlockItem {
 
     public PipeBlockItem(PipeBlock block, Properties properties) {
         super(block, properties);
     }
 
+    @SuppressWarnings("rawtypes")
     @Override
     public PipeBlock getBlock() {
         return (PipeBlock) super.getBlock();
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context, List<Component> tooltip,
+                                TooltipFlag isAdvanced) {
+        super.appendHoverText(stack, context, tooltip, isAdvanced);
+        if (GTUtil.isShiftDown()) {
+            var tool = getBlock().getPipeTuneTool();
+            tooltip.add(Component.translatable("gtceu.tool_action." + tool.name + ".connect"));
+        } else {
+            tooltip.add(Component.translatable("gtceu.tool_action.show_tooltips"));
+        }
     }
 
     @Override
@@ -74,9 +83,10 @@ public class PipeBlockItem extends BlockItem {
                         }
                     }
                 } else if (!ConfigHolder.INSTANCE.machines.gt6StylePipesCables &&
-                        selfTile.getPipeBlock().canPipeConnectToBlock(selfTile, facing, te)) {
-                            selfTile.setConnection(facing, true, false);
-                        }
+                        selfTile.getPipeBlock().canPipeConnectToBlock(selfTile,
+                                facing, selfTile.getPipeLevel(), selfTile.getPipePos().relative(facing))) {
+                                    selfTile.setConnection(facing, true, false);
+                                }
             }
         }
         return superVal;

@@ -1,5 +1,6 @@
 package com.gregtechceu.gtceu.api.machine;
 
+import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.recipe.*;
 import com.gregtechceu.gtceu.api.machine.feature.*;
@@ -12,31 +13,17 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-
-import com.google.common.collect.Table;
-import com.google.common.collect.Tables;
-import com.mojang.blaze3d.MethodsReturnNonnullByDefault;
 import it.unimi.dsi.fastutil.ints.Int2IntFunction;
 import lombok.Getter;
 import lombok.Setter;
-import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.VisibleForTesting;
 
 import java.util.*;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-/**
- * @author KilaBash
- * @date 2023/2/19
- * @implNote WorkableTieredMachine
- */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public abstract class WorkableTieredMachine extends TieredEnergyMachine implements IRecipeLogicMachine,
-                                            IMachineModifyDrops, IMufflableMachine, IOverclockMachine {
+                                            IMachineLife, IMufflableMachine, IOverclockMachine {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(WorkableTieredMachine.class,
             TieredEnergyMachine.MANAGED_FIELD_HOLDER);
@@ -46,7 +33,7 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
     @DescSynced
     public final RecipeLogic recipeLogic;
     @Getter
-    public final GTRecipeType[] recipeTypes;
+    private GTRecipeType[] recipeTypes;
     @Getter
     @Setter
     @Persisted
@@ -70,7 +57,9 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
     @Persisted
     public final NotifiableComputationContainer exportComputation;
     @Getter
-    protected final Table<IO, RecipeCapability<?>, List<IRecipeHandler<?>>> capabilitiesProxy;
+    protected final Map<IO, List<RecipeHandlerList>> capabilitiesProxy;
+    @Getter
+    protected final Map<IO, Map<RecipeCapability<?>, List<IRecipeHandler<?>>>> capabilitiesFlat;
     @Persisted
     @Getter
     protected int overclockTier;
@@ -89,7 +78,8 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
         this.recipeTypes = getDefinition().getRecipeTypes();
         this.activeRecipeType = 0;
         this.tankScalingFunction = tankScalingFunction;
-        this.capabilitiesProxy = Tables.newCustomTable(new EnumMap<>(IO.class), IdentityHashMap::new);
+        this.capabilitiesProxy = new EnumMap<>(IO.class);
+        this.capabilitiesFlat = new EnumMap<>(IO.class);
         this.traitSubscriptions = new ArrayList<>();
         this.recipeLogic = createRecipeLogic(args);
         this.importItems = createImportItemHandler(args);
@@ -112,19 +102,11 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
     protected NotifiableEnergyContainer createEnergyContainer(Object... args) {
         long tierVoltage = GTValues.V[getTier()];
         if (isEnergyEmitter()) {
-            return NotifiableEnergyContainer.emitterContainer(this,
-                    tierVoltage * 64L, tierVoltage, getMaxInputOutputAmperage());
+            return RecipeAmperageEnergyContainer.makeEmitterContainer(this, tierVoltage * 64L,
+                    tierVoltage, getMaxInputOutputAmperage());
         } else {
-            return new NotifiableEnergyContainer(this, tierVoltage * 64L, tierVoltage, 2, 0L, 0L) {
-
-                @Override
-                public long getInputAmperage() {
-                    if (getEnergyCapacity() / 2 > getEnergyStored() && recipeLogic.isActive()) {
-                        return 2;
-                    }
-                    return 1;
-                }
-            };
+            return RecipeAmperageEnergyContainer.makeReceiverContainer(this, tierVoltage * 64L,
+                    tierVoltage, getMaxInputOutputAmperage());
         }
     }
 
@@ -138,12 +120,12 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
 
     protected NotifiableFluidTank createImportFluidHandler(Object... args) {
         return new NotifiableFluidTank(this, getRecipeType().getMaxInputs(FluidRecipeCapability.CAP),
-                this.tankScalingFunction.apply(this.getTier()), IO.IN);
+                this.tankScalingFunction.applyAsInt(this.getTier()), IO.IN);
     }
 
     protected NotifiableFluidTank createExportFluidHandler(Object... args) {
         return new NotifiableFluidTank(this, getRecipeType().getMaxOutputs(FluidRecipeCapability.CAP),
-                this.tankScalingFunction.apply(this.getTier()), IO.OUT);
+                this.tankScalingFunction.applyAsInt(this.getTier()), IO.OUT);
     }
 
     protected NotifiableComputationContainer createImportComputationContainer(Object... args) {
@@ -165,14 +147,19 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
     @Override
     public void onLoad() {
         super.onLoad();
+        // attach self traits
+        Map<IO, List<IRecipeHandler<?>>> ioTraits = new EnumMap<>(IO.class);
+
         for (MachineTrait trait : getTraits()) {
             if (trait instanceof IRecipeHandlerTrait<?> handlerTrait) {
-                if (!capabilitiesProxy.contains(handlerTrait.getHandlerIO(), handlerTrait.getCapability())) {
-                    capabilitiesProxy.put(handlerTrait.getHandlerIO(), handlerTrait.getCapability(), new ArrayList<>());
-                }
-                capabilitiesProxy.get(handlerTrait.getHandlerIO(), handlerTrait.getCapability()).add(handlerTrait);
-                traitSubscriptions.add(handlerTrait.addChangedListener(recipeLogic::updateTickSubscription));
+                ioTraits.computeIfAbsent(handlerTrait.getHandlerIO(), i -> new ArrayList<>()).add(handlerTrait);
             }
+        }
+
+        for (var entry : ioTraits.entrySet()) {
+            var handlerList = RecipeHandlerList.of(entry.getKey(), entry.getValue());
+            this.addHandlerList(handlerList);
+            traitSubscriptions.add(handlerList.subscribe(recipeLogic::updateTickSubscription));
         }
     }
 
@@ -181,6 +168,8 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
         super.onUnload();
         traitSubscriptions.forEach(ISubscription::unsubscribe);
         traitSubscriptions.clear();
+        capabilitiesProxy.clear();
+        capabilitiesFlat.clear();
         recipeLogic.inValid();
     }
 
@@ -189,14 +178,9 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
     //////////////////////////////////////
 
     @Override
-    protected long getMaxInputOutputAmperage() {
-        return 2L;
-    }
-
-    @Override
-    public void onDrops(List<ItemStack> drops, Player entity) {
-        clearInventory(drops, importItems.storage);
-        clearInventory(drops, exportItems.storage);
+    public void onMachineRemoved() {
+        clearInventory(importItems.storage);
+        clearInventory(exportItems.storage);
     }
 
     //////////////////////////////////////
@@ -247,8 +231,31 @@ public abstract class WorkableTieredMachine extends TieredEnergyMachine implemen
         return false;
     }
 
-    @NotNull
     public GTRecipeType getRecipeType() {
+        if (activeRecipeType >= recipeTypes.length) {
+            GTCEu.LOGGER.warn("Preventing crash from bad recipe type index!");
+            activeRecipeType = recipeTypes.length - 1;
+        }
         return recipeTypes[activeRecipeType];
+    }
+
+    @ApiStatus.Internal
+    @VisibleForTesting
+    public void setRecipeType(GTRecipeType type) {
+        int recipeIndex = -1;
+        for (int i = 0; i < recipeTypes.length; i++) {
+            if (type.equals(recipeTypes[i])) {
+                recipeIndex = i;
+                break;
+            }
+        }
+        if (recipeIndex == -1) {
+            var newer = new GTRecipeType[recipeTypes.length + 1];
+            System.arraycopy(recipeTypes, 0, newer, 0, recipeTypes.length);
+            newer[recipeTypes.length] = type;
+            recipeTypes = newer;
+            recipeIndex = recipeTypes.length - 1;
+        }
+        setActiveRecipeType(recipeIndex);
     }
 }

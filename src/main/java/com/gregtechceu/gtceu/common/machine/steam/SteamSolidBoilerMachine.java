@@ -3,50 +3,40 @@ package com.gregtechceu.gtceu.common.machine.steam;
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
+import com.gregtechceu.gtceu.api.data.chemical.ChemicalHelper;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
+import com.gregtechceu.gtceu.api.gui.widget.SlotWidget;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
-import com.gregtechceu.gtceu.api.machine.feature.IMachineModifyDrops;
+import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
 import com.gregtechceu.gtceu.api.machine.steam.SteamBoilerMachine;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
-import com.gregtechceu.gtceu.api.material.ChemicalHelper;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
-import com.gregtechceu.gtceu.data.material.GTMaterials;
+import com.gregtechceu.gtceu.common.data.GTMaterials;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
 import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
 import com.lowdragmc.lowdraglib.gui.texture.ProgressTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ProgressWidget;
-import com.lowdragmc.lowdraglib.gui.widget.SlotWidget;
-import com.lowdragmc.lowdraglib.side.fluid.FluidTransferHelper;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.fluids.FluidUtil;
 
 import it.unimi.dsi.fastutil.objects.Object2BooleanMap;
 import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-/**
- * @author KilaBash
- * @date 2023/3/15
- * @implNote SteamSolidBoilerMachine
- */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
-public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMachineModifyDrops {
+public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMachineLife {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             SteamSolidBoilerMachine.class, SteamBoilerMachine.MANAGED_FIELD_HOLDER);
-    public static final Object2BooleanMap<Item> FUEL_CACHE = new Object2BooleanOpenHashMap<>();
+    public static final Object2BooleanMap<net.minecraft.world.item.Item> FUEL_CACHE = new Object2BooleanOpenHashMap<>();
 
     @Persisted
     public final NotifiableItemStackHandler fuelHandler, ashHandler;
@@ -54,7 +44,7 @@ public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMach
     public SteamSolidBoilerMachine(IMachineBlockEntity holder, boolean isHighPressure, Object... args) {
         super(holder, isHighPressure, args);
         this.fuelHandler = createFuelHandler(args).setFilter(itemStack -> {
-            if (FluidTransferHelper.getFluidContained(itemStack) != null) {
+            if (FluidUtil.getFluidContained(itemStack).isPresent()) {
                 return false;
             }
             return FUEL_CACHE.computeIfAbsent(itemStack.getItem(), item -> {
@@ -62,7 +52,7 @@ public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMach
                 return recipeLogic.getRecipeManager().getAllRecipesFor(getRecipeType()).stream().anyMatch(recipe -> {
                     var list = recipe.value().inputs.getOrDefault(ItemRecipeCapability.CAP, Collections.emptyList());
                     if (!list.isEmpty()) {
-                        return Arrays.stream(ItemRecipeCapability.CAP.of(list.get(0).content).getItems())
+                        return Arrays.stream(ItemRecipeCapability.CAP.of(list.getFirst().content).getItems())
                                 .map(ItemStack::getItem).anyMatch(i -> i == item);
                     }
                     return false;
@@ -76,7 +66,7 @@ public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMach
     // ***** Initialization *****//
     //////////////////////////////////////
     @Override
-    public ManagedFieldHolder getFieldHolder() {
+    public @NotNull ManagedFieldHolder getFieldHolder() {
         return MANAGED_FIELD_HOLDER;
     }
 
@@ -90,7 +80,8 @@ public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMach
 
     @Override
     protected long getBaseSteamOutput() {
-        return (isHighPressure ? 300 : 120);
+        return isHighPressure ? ConfigHolder.INSTANCE.machines.smallBoilers.hpSolidBoilerBaseOutput :
+                ConfigHolder.INSTANCE.machines.smallBoilers.solidBoilerBaseOutput;
     }
 
     @Override
@@ -114,10 +105,10 @@ public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMach
     public static ItemStack getBurningFuelRemainder(ItemStack fuelStack) {
         float remainderChance;
         ItemStack remainder;
-        var materialStack = ChemicalHelper.getMaterial(fuelStack);
-        if (materialStack == null)
+        var materialStack = ChemicalHelper.getMaterialStack(fuelStack);
+        if (materialStack.isEmpty()) {
             return ItemStack.EMPTY;
-        else if (materialStack.material() == GTMaterials.Charcoal) {
+        } else if (materialStack.material() == GTMaterials.Charcoal) {
             remainder = ChemicalHelper.get(TagPrefix.dust, GTMaterials.Ash);
             remainderChance = 0.3f;
         } else if (materialStack.material() == GTMaterials.Coal) {
@@ -126,7 +117,9 @@ public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMach
         } else if (materialStack.material() == GTMaterials.Coke) {
             remainder = ChemicalHelper.get(TagPrefix.dust, GTMaterials.Ash);
             remainderChance = 0.5f;
-        } else return ItemStack.EMPTY;
+        } else {
+            return ItemStack.EMPTY;
+        }
         return GTValues.RNG.nextFloat() <= remainderChance ? remainder : ItemStack.EMPTY;
     }
 
@@ -147,8 +140,8 @@ public class SteamSolidBoilerMachine extends SteamBoilerMachine implements IMach
     }
 
     @Override
-    public void onDrops(List<ItemStack> drops, Player entity) {
-        clearInventory(drops, fuelHandler.storage);
-        clearInventory(drops, ashHandler.storage);
+    public void onMachineRemoved() {
+        clearInventory(fuelHandler.storage);
+        clearInventory(ashHandler.storage);
     }
 }

@@ -1,6 +1,6 @@
 package com.gregtechceu.gtceu.api.block;
 
-import com.gregtechceu.gtceu.api.RotationState;
+import com.gregtechceu.gtceu.api.data.RotationState;
 import com.gregtechceu.gtceu.api.item.IGTTool;
 import com.gregtechceu.gtceu.api.item.MetaMachineItem;
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
@@ -10,30 +10,26 @@ import com.gregtechceu.gtceu.api.machine.MachineDefinition;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.MultiblockMachineDefinition;
 import com.gregtechceu.gtceu.api.machine.feature.*;
-import com.gregtechceu.gtceu.data.item.GTItems;
+import com.gregtechceu.gtceu.common.data.GTBlockStateProperties;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.machine.owner.MachineOwner;
 import com.gregtechceu.gtceu.utils.GTUtil;
-
-import com.lowdragmc.lowdraglib.client.renderer.IRenderer;
-import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
 
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.nbt.CompoundTag;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -41,12 +37,12 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.storage.loot.LootParams;
-import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -62,29 +58,23 @@ import java.util.Set;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 
-/**
- * @author KilaBash
- * @date 2023/2/17
- * @implNote GTBlock
- */
+@SuppressWarnings("deprecation")
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
-public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
+public class MetaMachineBlock extends Block implements IMachineBlock {
 
     @Getter
     public final MachineDefinition definition;
-    @Getter
-    public final RotationState rotationState;
 
     public MetaMachineBlock(Properties properties, MachineDefinition definition) {
         super(properties);
         this.definition = definition;
-        this.rotationState = RotationState.get();
+        RotationState rotationState = definition.getRotationState();
         if (rotationState != RotationState.NONE) {
             BlockState defaultState = this.defaultBlockState().setValue(rotationState.property,
                     rotationState.defaultDirection);
-            if (definition instanceof MultiblockMachineDefinition multi && multi.isAllowExtendedFacing()) {
-                defaultState = defaultState.setValue(IMachineBlock.UPWARDS_FACING_PROPERTY, Direction.NORTH);
+            if (definition.isAllowExtendedFacing()) {
+                defaultState = defaultState.setValue(GTBlockStateProperties.UPWARDS_FACING, Direction.NORTH);
             }
             registerDefaultState(defaultState);
         }
@@ -92,32 +82,24 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> pBuilder) {
-        pBuilder.add(BlockProperties.SERVER_TICK);
-        RotationState rotationState = RotationState.get();
+        RotationState rotationState = MachineDefinition.getBuilt().getRotationState();
         if (rotationState != RotationState.NONE) {
             pBuilder.add(rotationState.property);
-            if (MachineDefinition.getBuilt() instanceof MultiblockMachineDefinition multi &&
-                    multi.isAllowExtendedFacing()) {
-                pBuilder.add(IMachineBlock.UPWARDS_FACING_PROPERTY);
+            if (MachineDefinition.getBuilt().isAllowExtendedFacing()) {
+                pBuilder.add(GTBlockStateProperties.UPWARDS_FACING);
             }
         }
-    }
-
-    @Nullable
-    public MetaMachine getMachine(BlockGetter level, BlockPos pos) {
-        return MetaMachine.getMachine(level, pos);
-    }
-
-    @Nullable
-    @Override
-    public IRenderer getRenderer(BlockState state) {
-        return definition.getRenderer();
     }
 
     @Override
     public VoxelShape getShape(BlockState pState, BlockGetter pLevel, BlockPos pPos, CollisionContext pContext) {
         return getRotationState() == RotationState.NONE ? definition.getShape(Direction.NORTH) :
                 definition.getShape(pState.getValue(getRotationState().property));
+    }
+
+    @Override
+    public RenderShape getRenderShape(BlockState state) {
+        return RenderShape.MODEL;
     }
 
     @Override
@@ -134,10 +116,10 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
                             ItemStack pStack) {
         if (!pLevel.isClientSide) {
             var machine = getMachine(pLevel, pPos);
-            if (machine instanceof IDropSaveMachine dropSaveMachine) {
-                CustomData tag = pStack.get(DataComponents.BLOCK_ENTITY_DATA);
-                if (tag != null) {
-                    dropSaveMachine.loadFromItem(tag.copyTag());
+            if (machine != null) {
+                if (player instanceof ServerPlayer sPlayer) {
+                    machine.setOwnerUUID(sPlayer.getUUID());
+                    machine.markDirty();
                 }
             }
             if (machine instanceof IMachineLife machineLife) {
@@ -177,30 +159,25 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
                     state = state.setValue(rotationState.property, Direction.DOWN);
                 }
             }
-            if (getDefinition() instanceof MultiblockMachineDefinition multi && multi.isAllowExtendedFacing()) {
+            if (getDefinition().isAllowExtendedFacing()) {
                 Direction frontFacing = state.getValue(rotationState.property);
                 if (frontFacing == Direction.UP) {
-                    state = state.setValue(IMachineBlock.UPWARDS_FACING_PROPERTY, player.getDirection());
+                    state = state.setValue(GTBlockStateProperties.UPWARDS_FACING, player.getDirection());
                 } else if (frontFacing == Direction.DOWN) {
-                    state = state.setValue(IMachineBlock.UPWARDS_FACING_PROPERTY, player.getDirection().getOpposite());
+                    state = state.setValue(GTBlockStateProperties.UPWARDS_FACING, player.getDirection().getOpposite());
                 }
             }
         }
         return state;
     }
 
-    public Direction getFrontFacing(BlockState state) {
-        return getRotationState() == RotationState.NONE ? Direction.NORTH : state.getValue(getRotationState().property);
-    }
-
     @Override
     public ItemStack getCloneItemStack(BlockState state, HitResult target, LevelReader level, BlockPos pos,
                                        Player player) {
         ItemStack itemStack = super.getCloneItemStack(state, target, level, pos, player);
-        if (getMachine(level, pos) instanceof IDropSaveMachine dropSaveMachine && dropSaveMachine.savePickClone()) {
-            CompoundTag tag = itemStack.getOrDefault(DataComponents.BLOCK_ENTITY_DATA, CustomData.EMPTY).copyTag();
-            dropSaveMachine.saveToItem(tag);
-            itemStack.set(DataComponents.BLOCK_ENTITY_DATA, CustomData.of(tag));
+        MetaMachine machine = getMachine(level, pos);
+        if (machine instanceof IDropSaveMachine dropSaveMachine && dropSaveMachine.savePickClone()) {
+            dropSaveMachine.saveToItem(itemStack, level.registryAccess());
         }
         return itemStack;
     }
@@ -211,7 +188,18 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
         definition.getTooltipBuilder().accept(stack, tooltip);
         String mainKey = String.format("%s.machine.%s.tooltip", definition.getId().getNamespace(),
                 definition.getId().getPath());
-        if (LocalizationUtils.exist(mainKey)) {
+        if (GTUtil.isShiftDown()) {
+            if (definition instanceof MultiblockMachineDefinition multiblockDefinition) {
+                var pattern = multiblockDefinition.getPatternFactory().get();
+                if (pattern != null) {
+                    var aisleDims = pattern.getDimensions();
+                    assert aisleDims.length == 3;
+                    tooltip.add(Component.translatable("gtceu.multiblock.dimension", aisleDims[0], aisleDims[1],
+                            aisleDims[2]));
+                }
+            }
+        }
+        if (Language.getInstance().has(mainKey)) {
             tooltip.add(1, Component.translatable(mainKey));
         }
     }
@@ -227,36 +215,26 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
 
     @Override
     public BlockState rotate(BlockState pState, Rotation pRotation) {
-        if (this.rotationState == RotationState.NONE) {
+        if (getRotationState() == RotationState.NONE) {
             return pState;
         }
-        return pState.setValue(this.rotationState.property,
-                pRotation.rotate(pState.getValue(this.rotationState.property)));
+        return pState.setValue(getRotationState().property,
+                pRotation.rotate(pState.getValue(getRotationState().property)));
     }
 
     @Override
     public List<ItemStack> getDrops(BlockState state, LootParams.Builder builder) {
-        var context = builder.withParameter(LootContextParams.BLOCK_STATE, state).create(LootContextParamSets.BLOCK);
-        Entity entity = context.getParamOrNull(LootContextParams.THIS_ENTITY);
-        BlockEntity tileEntity = context.getParamOrNull(LootContextParams.BLOCK_ENTITY);
+        BlockEntity blockEntity = builder.getOptionalParameter(LootContextParams.BLOCK_ENTITY);
         var drops = super.getDrops(state, builder);
-        if (tileEntity instanceof IMachineBlockEntity holder) {
+        if (blockEntity instanceof IMachineBlockEntity holder) {
             var machine = holder.getMetaMachine();
-            for (Direction direction : GTUtil.DIRECTIONS) {
-                machine.getCoverContainer().removeCover(direction, null);
-            }
-            if (machine instanceof IMachineModifyDrops machineModifyDrops && entity instanceof Player) {
-                machineModifyDrops.onDrops(drops, (Player) entity);
+            if (machine instanceof IMachineModifyDrops machineModifyDrops) {
+                machineModifyDrops.onDrops(drops);
             }
             if (machine instanceof IDropSaveMachine dropSaveMachine && dropSaveMachine.saveBreak()) {
                 for (ItemStack drop : drops) {
                     if (drop.getItem() instanceof MetaMachineItem item && item.getBlock() == this) {
-                        CompoundTag tag = drop.getOrDefault(DataComponents.BLOCK_ENTITY_DATA, CustomData.EMPTY)
-                                .copyTag();
-                        dropSaveMachine.saveToItem(tag);
-                        tag.remove("id");
-                        BlockEntity.addEntityType(tag, tileEntity.getType());
-                        drop.set(DataComponents.BLOCK_ENTITY_DATA, CustomData.of(tag));
+                        dropSaveMachine.saveToItem(drop, blockEntity.getLevel().registryAccess());
                         // break here to not dupe contents if a machine drops multiple of itself for whatever reason.
                         break;
                     }
@@ -270,15 +248,21 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
     public void onRemove(BlockState pState, Level pLevel, BlockPos pPos, BlockState pNewState, boolean pIsMoving) {
         if (pState.hasBlockEntity()) {
             if (!pState.is(pNewState.getBlock())) { // new block
-                if (getMachine(pLevel, pPos) instanceof IMachineLife machineLife) {
+                MetaMachine machine = getMachine(pLevel, pPos);
+                if (machine instanceof IMachineLife machineLife) {
                     machineLife.onMachineRemoved();
+                }
+                if (machine != null) {
+                    for (Direction direction : GTUtil.DIRECTIONS) {
+                        machine.getCoverContainer().removeCover(direction, null);
+                    }
                 }
 
                 pLevel.updateNeighbourForOutputSignal(pPos, this);
                 pLevel.removeBlockEntity(pPos);
-            } else if (rotationState != RotationState.NONE) { // old block different facing
-                var oldFacing = pState.getValue(rotationState.property);
-                var newFacing = pNewState.getValue(rotationState.property);
+            } else if (getRotationState() != RotationState.NONE) { // old block different facing
+                var oldFacing = pState.getValue(getRotationState().property);
+                var newFacing = pNewState.getValue(getRotationState().property);
                 if (newFacing != oldFacing) {
                     var machine = getMachine(pLevel, pPos);
                     if (machine != null) {
@@ -290,15 +274,20 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
     }
 
     @Override
-    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level world, BlockPos pos,
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                               Player player, InteractionHand hand, BlockHitResult hit) {
-        var machine = getMachine(world, pos);
+        var machine = getMachine(level, pos);
         boolean shouldOpenUi = true;
 
+        if (machine != null && machine.getOwnerUUID() == null && player instanceof ServerPlayer sPlayer) {
+            machine.setOwnerUUID(sPlayer.getUUID());
+            machine.markDirty();
+        }
+
         Set<GTToolType> types = ToolHelper.getToolTypes(stack);
-        if (machine != null && !types.isEmpty() && ToolHelper.canUse(stack)) {
-            var result = machine.onToolClick(types, stack,
-                    new UseOnContext(player, hand, hit));
+        if (machine != null &&
+                (!types.isEmpty() && ToolHelper.canUse(stack) || types.isEmpty() && player.isShiftKeyDown())) {
+            var result = machine.onToolClick(types, stack, new UseOnContext(player, hand, hit));
             if (result.getSecond() == ItemInteractionResult.CONSUME && player instanceof ServerPlayer serverPlayer) {
                 ToolHelper.playToolSound(result.getFirst(), serverPlayer);
 
@@ -310,42 +299,50 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
         }
 
         if (stack.is(GTItems.PORTABLE_SCANNER.get())) {
-            return getFromInteractionResult(stack.getItem().use(world, player, hand).getResult());
+            return getFromInteractionResult(stack.getItem().use(level, player, hand).getResult());
         }
 
         if (stack.getItem() instanceof IGTTool gtToolItem) {
-            shouldOpenUi = gtToolItem
-                    .definition$shouldOpenUIAfterUse(new UseOnContext(player, hand, hit));
+            shouldOpenUi = gtToolItem.definition$shouldOpenUIAfterUse(new UseOnContext(player, hand, hit));
         }
 
         if (machine instanceof IInteractedMachine interactedMachine) {
-            var result = interactedMachine.onUse(state, world, pos, player, hand, hit);
+            var result = interactedMachine.onUseWithItem(stack, state, level, pos, player, hand, hit);
             if (result.result() != InteractionResult.PASS) return result;
         }
-        if (shouldOpenUi && machine instanceof IUIMachine uiMachine) {
+        if (shouldOpenUi && machine instanceof IUIMachine uiMachine &&
+                MachineOwner.canOpenOwnerMachine(player, machine)) {
             return uiMachine.tryToOpenUI(player, hand, hit);
         }
         return shouldOpenUi ? ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION : ItemInteractionResult.CONSUME;
     }
 
-    public boolean canConnectRedstone(BlockGetter level, BlockPos pos, Direction side) {
+    @Override
+    protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,
+                                               Player player, BlockHitResult hit) {
+        var machine = getMachine(level, pos);
+        if (machine instanceof IUIMachine uiMachine &&
+                MachineOwner.canOpenOwnerMachine(player, machine)) {
+            return uiMachine.tryToOpenUI(player, InteractionHand.MAIN_HAND, hit).result();
+        }
+        return super.useWithoutItem(state, level, pos, player, hit);
+    }
+
+    public boolean canConnectRedstone(BlockGetter level, BlockPos pos, @Nullable Direction side) {
         return getMachine(level, pos).canConnectRedstone(side);
     }
 
     @Override
-    @SuppressWarnings("deprecation") // This is fine to override, just not to be called.
     public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
         return getMachine(level, pos).getOutputSignal(direction);
     }
 
     @Override
-    @SuppressWarnings("deprecation") // This is fine to override, just not to be called.
     public int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
         return getMachine(level, pos).getOutputDirectSignal(direction);
     }
 
     @Override
-    @SuppressWarnings("deprecation") // This is fine to override, just not to be called.
     public int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos) {
         return getMachine(level, pos).getAnalogOutputSignal();
     }
@@ -360,14 +357,15 @@ public class MetaMachineBlock extends AppearanceBlock implements IMachineBlock {
         super.neighborChanged(state, level, pos, block, fromPos, isMoving);
     }
 
+    @Nullable
     @Override
-    public BlockState getBlockAppearance(BlockState state, BlockAndTintGetter level, BlockPos pos, Direction side,
-                                         BlockState sourceState, BlockPos sourcePos) {
+    public BlockState getAppearance(BlockState state, BlockAndTintGetter level, BlockPos pos, Direction side,
+                                    @Nullable BlockState sourceState, @Nullable BlockPos sourcePos) {
         var machine = getMachine(level, pos);
         if (machine != null) {
             return machine.getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
         }
-        return super.getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
+        return super.getAppearance(state, level, pos, side, sourceState, sourcePos);
     }
 
     public static ItemInteractionResult getFromInteractionResult(InteractionResult result) {

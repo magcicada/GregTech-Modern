@@ -1,14 +1,19 @@
 package com.gregtechceu.gtceu.integration.kjs.helpers;
 
-import com.gregtechceu.gtceu.api.material.material.Material;
-import com.gregtechceu.gtceu.api.material.material.stack.MaterialStack;
-import com.gregtechceu.gtceu.data.material.GTMaterials;
+import com.gregtechceu.gtceu.api.data.chemical.material.Material;
+import com.gregtechceu.gtceu.api.data.chemical.material.stack.MaterialStack;
+import com.gregtechceu.gtceu.common.data.GTMaterials;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Supplier;
 
-public record MaterialStackWrapper(Supplier<Material> material, long amount) {
+public record MaterialStackWrapper(@Nullable Supplier<@NotNull Material> material, long amount) {
+
+    public static MaterialStackWrapper EMPTY = new MaterialStackWrapper(() -> GTMaterials.NULL, 0);
 
     private static final Map<String, MaterialStackWrapper> PARSE_CACHE = new WeakHashMap<>();
 
@@ -19,7 +24,7 @@ public record MaterialStackWrapper(Supplier<Material> material, long amount) {
         var cached = PARSE_CACHE.get(trimmed);
 
         if (cached != null) {
-            return cached.isEmpty() ? null : cached.copy();
+            return cached.copy();
         }
 
         var count = 1;
@@ -31,20 +36,23 @@ public record MaterialStackWrapper(Supplier<Material> material, long amount) {
         }
 
         final String copyFinal = copy;
-        cached = new MaterialStackWrapper(() -> GTMaterials.get(copyFinal), count);
+        Supplier<Material> mat = () -> GTMaterials.get(copyFinal);
+        cached = new MaterialStackWrapper(mat, count);
         PARSE_CACHE.put(trimmed, cached);
         return cached.copy();
     }
 
     public MaterialStackWrapper copy() {
+        if (isEmpty()) return EMPTY;
         return new MaterialStackWrapper(material, amount);
     }
 
     public boolean isEmpty() {
-        return this.material == null || this.amount < 1;
+        return this.amount < 1 || this.material == null;
     }
 
     public MaterialStack toMatStack() {
+        if (isEmpty()) return MaterialStack.EMPTY;
         return new MaterialStack(this.material.get(), this.amount);
     }
 }

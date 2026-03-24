@@ -1,10 +1,10 @@
 package com.gregtechceu.gtceu.api.block;
 
 import com.gregtechceu.gtceu.GTCEu;
-import com.gregtechceu.gtceu.api.RotationState;
 import com.gregtechceu.gtceu.api.capability.*;
-import com.gregtechceu.gtceu.api.capability.forge.GTCapability;
-import com.gregtechceu.gtceu.api.capability.forge.compat.EnergyStorageList;
+import com.gregtechceu.gtceu.api.capability.GTCapability;
+import com.gregtechceu.gtceu.api.capability.compat.EnergyStorageList;
+import com.gregtechceu.gtceu.api.data.RotationState;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MachineDefinition;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
@@ -14,15 +14,11 @@ import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
 import com.gregtechceu.gtceu.api.misc.EnergyContainerList;
 import com.gregtechceu.gtceu.api.misc.EnergyInfoProviderList;
 import com.gregtechceu.gtceu.api.misc.LaserContainerList;
-import com.gregtechceu.gtceu.api.pipenet.longdistance.ILDEndpoint;
-import com.gregtechceu.gtceu.common.pipelike.fluidpipe.longdistance.LDFluidEndpointMachine;
-import com.gregtechceu.gtceu.common.pipelike.item.longdistance.LDItemEndpointMachine;
-
-import com.lowdragmc.lowdraglib.client.renderer.IBlockRendererProvider;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -30,12 +26,9 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.energy.IEnergyStorage;
-import net.neoforged.neoforge.fluids.capability.IFluidHandler;
-import net.neoforged.neoforge.items.IItemHandler;
 
 import appeng.api.AECapabilities;
 import appeng.api.networking.IInWorldGridNodeHost;
@@ -45,14 +38,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * @author KilaBash
- * @date 2023/3/31
- * @implNote IMachineBlock
- */
-public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
-
-    DirectionProperty UPWARDS_FACING_PROPERTY = DirectionProperty.create("upwards_facing", Direction.Plane.HORIZONTAL);
+public interface IMachineBlock extends EntityBlock {
 
     default Block self() {
         return (Block) this;
@@ -60,7 +46,18 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
 
     MachineDefinition getDefinition();
 
-    RotationState getRotationState();
+    default RotationState getRotationState() {
+        return getDefinition().getRotationState();
+    }
+
+    default Direction getFrontFacing(BlockState state) {
+        return getRotationState() == RotationState.NONE ? Direction.NORTH : state.getValue(getRotationState().property);
+    }
+
+    @Nullable
+    default MetaMachine getMachine(BlockGetter level, BlockPos pos) {
+        return MetaMachine.getMachine(level, pos);
+    }
 
     static int colorTinted(BlockState blockState, @Nullable BlockAndTintGetter level, @Nullable BlockPos pos,
                            int index) {
@@ -84,14 +81,13 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
     default <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state,
                                                                    BlockEntityType<T> blockEntityType) {
         if (blockEntityType == getDefinition().getBlockEntityType()) {
-            if (state.getValue(BlockProperties.SERVER_TICK) && !level.isClientSide) {
+            if (!level.isClientSide) {
                 return (pLevel, pPos, pState, pTile) -> {
                     if (pTile instanceof IMachineBlockEntity metaMachine) {
                         metaMachine.getMetaMachine().serverTick();
                     }
                 };
-            }
-            if (level.isClientSide) {
+            } else {
                 return (pLevel, pPos, pState, pTile) -> {
                     if (pTile instanceof IMachineBlockEntity metaMachine) {
                         metaMachine.getMetaMachine().clientTick();
@@ -100,6 +96,10 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
             }
         }
         return null;
+    }
+
+    default boolean canConnectRedstone(BlockGetter level, BlockPos pos, Direction side) {
+        return getMachine(level, pos).canConnectRedstone(side);
     }
 
     default void attachCapabilities(RegisterCapabilitiesEvent event) {
@@ -159,7 +159,7 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
                 var list = getCapabilitiesFromTraits(machine.getMetaMachine().getTraits(), side,
                         IEnergyContainer.class);
                 if (!list.isEmpty()) {
-                    return new EnergyContainerList(list);
+                    return list.size() == 1 ? list.getFirst() : new EnergyContainerList(list);
                 }
             }
             return null;
@@ -172,7 +172,7 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
                 var list = getCapabilitiesFromTraits(machine.getMetaMachine().getTraits(), side,
                         IEnergyInfoProvider.class);
                 if (!list.isEmpty()) {
-                    return new EnergyInfoProviderList(list);
+                    return list.size() == 1 ? list.getFirst() : new EnergyInfoProviderList(list);
                 }
             }
             return null;
@@ -211,43 +211,23 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
             }
             return null;
         }, this.self());
-        event.registerBlock(Capabilities.ItemHandler.BLOCK, (level, pos, state, blockEntity, side) -> {
-            if (blockEntity instanceof IMachineBlockEntity machineBe) {
-                MetaMachine machine = machineBe.getMetaMachine();
-                if (machine instanceof LDItemEndpointMachine fluidEndpointMachine) {
-                    if (machine.getLevel().isClientSide)
-                        return null;
-                    ILDEndpoint endpoint = fluidEndpointMachine.getLink();
-                    if (endpoint == null)
-                        return null;
-                    Direction outputFacing = fluidEndpointMachine.getOutputFacing();
-                    IItemHandler transfer = machine.getLevel().getCapability(Capabilities.ItemHandler.BLOCK,
-                            endpoint.getPos().relative(outputFacing), outputFacing.getOpposite());
-                    if (transfer != null) {
-                        new LDItemEndpointMachine.ItemHandlerWrapper(transfer);
-                    }
+        event.registerBlock(GTCapability.CAPABILITY_TURBINE_MACHINE, (level, pos, state, blockEntity, side) -> {
+            if (blockEntity instanceof IMachineBlockEntity machine) {
+                if (machine.getMetaMachine() instanceof ITurbineMachine turbine) {
+                    return turbine;
                 }
-                return machine.getItemTransferCap(side, true);
+            }
+            return null;
+        }, this.self());
+        event.registerBlock(Capabilities.ItemHandler.BLOCK, (level, pos, state, blockEntity, side) -> {
+            if (blockEntity instanceof IMachineBlockEntity machine) {
+                return machine.getMetaMachine().getItemHandlerCap(side, true);
             }
             return null;
         }, this.self());
         event.registerBlock(Capabilities.FluidHandler.BLOCK, (level, pos, state, blockEntity, side) -> {
-            if (blockEntity instanceof IMachineBlockEntity machineBe) {
-                MetaMachine machine = machineBe.getMetaMachine();
-                if (machine instanceof LDFluidEndpointMachine fluidEndpointMachine) {
-                    if (machine.getLevel().isClientSide)
-                        return null;
-                    ILDEndpoint endpoint = fluidEndpointMachine.getLink();
-                    if (endpoint == null)
-                        return null;
-                    Direction outputFacing = fluidEndpointMachine.getOutputFacing();
-                    IFluidHandler transfer = machine.getLevel().getCapability(Capabilities.FluidHandler.BLOCK,
-                            endpoint.getPos().relative(outputFacing), outputFacing.getOpposite());
-                    if (transfer != null) {
-                        return new LDFluidEndpointMachine.FluidHandlerWrapper(transfer);
-                    }
-                }
-                return machine.getFluidTransferCap(side, true);
+            if (blockEntity instanceof IMachineBlockEntity machine) {
+                return machine.getMetaMachine().getFluidHandlerCap(side, true);
             }
             return null;
         }, this.self());
@@ -258,19 +238,19 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
                 }
                 var list = getCapabilitiesFromTraits(machine.getMetaMachine().getTraits(), side, IEnergyStorage.class);
                 if (!list.isEmpty()) {
-                    return new EnergyStorageList(list);
+                    return list.size() == 1 ? list.getFirst() : new EnergyStorageList(list);
                 }
             }
             return null;
         }, this.self());
         event.registerBlock(GTCapability.CAPABILITY_LASER, (level, pos, state, blockEntity, side) -> {
             if (blockEntity instanceof IMachineBlockEntity machine) {
-                if (machine.getMetaMachine() instanceof ILaserContainer energyContainer) {
-                    return energyContainer;
+                if (machine.getMetaMachine() instanceof ILaserContainer laserContainer) {
+                    return laserContainer;
                 }
                 var list = getCapabilitiesFromTraits(machine.getMetaMachine().getTraits(), side, ILaserContainer.class);
                 if (!list.isEmpty()) {
-                    return new LaserContainerList(list);
+                    return list.size() == 1 ? list.getFirst() : new LaserContainerList(list);
                 }
             }
             return null;
@@ -301,17 +281,39 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
             }
             return null;
         }, this.self());
-        if (GTCEu.isAE2Loaded()) {
+        event.registerBlock(GTCapability.CAPABILITY_MONITOR_COMPONENT, (level, pos, state, blockEntity, side) -> {
+            if (blockEntity instanceof IMachineBlockEntity machine) {
+                if (machine.getMetaMachine() instanceof IMonitorComponent monitorComponent) {
+                    return monitorComponent;
+                }
+                var list = getCapabilitiesFromTraits(machine.getMetaMachine().getTraits(), side,
+                        IMonitorComponent.class);
+                if (!list.isEmpty()) {
+                    return list.getFirst();
+                }
+            }
+            return null;
+        }, this.self());
+        event.registerBlock(GTCapability.CAPABILITY_CENTRAL_MONITOR, (level, pos, state, blockEntity, side) -> {
+            if (blockEntity instanceof IMachineBlockEntity machine) {
+                if (machine.getMetaMachine() instanceof ICentralMonitor centralMonitor) {
+                    return centralMonitor;
+                }
+            }
+            return null;
+        }, this.self());
+
+        if (GTCEu.Mods.isAE2Loaded()) {
             event.registerBlock(AECapabilities.IN_WORLD_GRID_NODE_HOST, (level, pos, state, blockEntity, side) -> {
                 if (blockEntity instanceof IMachineBlockEntity machine) {
                     if (machine.getMetaMachine() instanceof IInWorldGridNodeHost nodeHost) {
                         return nodeHost;
                     }
-                    var list = getCapabilitiesFromTraits(machine.getMetaMachine().getTraits(), side,
+                    var list = getCapabilitiesFromTraits(machine.getMetaMachine().getTraits(), null,
                             IInWorldGridNodeHost.class);
                     if (!list.isEmpty()) {
                         // TODO wrap list in the future (or not.)
-                        return list.get(0);
+                        return list.getFirst();
                     }
                 }
                 return null;
@@ -319,7 +321,7 @@ public interface IMachineBlock extends IBlockRendererProvider, EntityBlock {
         }
     }
 
-    static <T> List<T> getCapabilitiesFromTraits(List<MachineTrait> traits, Direction accessSide,
+    static <T> List<T> getCapabilitiesFromTraits(List<MachineTrait> traits, @Nullable Direction accessSide,
                                                  Class<T> capability) {
         if (traits.isEmpty()) return Collections.emptyList();
         List<T> list = new ArrayList<>();

@@ -1,28 +1,30 @@
 package com.gregtechceu.gtceu.common.pipelike.fluidpipe;
 
 import com.gregtechceu.gtceu.GTCEu;
-import com.gregtechceu.gtceu.api.material.material.Material;
-import com.gregtechceu.gtceu.api.material.material.properties.FluidPipeProperties;
-import com.gregtechceu.gtceu.api.material.material.properties.PropertyKey;
+import com.gregtechceu.gtceu.api.block.PipeBlock;
+import com.gregtechceu.gtceu.api.data.chemical.material.Material;
+import com.gregtechceu.gtceu.api.data.chemical.material.properties.FluidPipeProperties;
+import com.gregtechceu.gtceu.api.data.chemical.material.properties.PropertyKey;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
 import com.gregtechceu.gtceu.api.pipenet.IMaterialPipeType;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
-import com.gregtechceu.gtceu.client.model.PipeModel;
+import com.gregtechceu.gtceu.api.registry.registrate.provider.GTBlockstateProvider;
+import com.gregtechceu.gtceu.client.model.pipe.PipeModel;
 
 import net.minecraft.resources.ResourceLocation;
 
 import lombok.Getter;
 
-import static com.gregtechceu.gtceu.api.tag.TagPrefix.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
 
 public enum FluidPipeType implements IMaterialPipeType<FluidPipeProperties> {
 
     TINY("tiny", 0.25f, 1, pipeTinyFluid),
     SMALL("small", 0.375f, 2, pipeSmallFluid),
     NORMAL("normal", 0.5f, 6, pipeNormalFluid),
-    LARGE("large", 0.75f, 12, pipeLargeFluid),
-    HUGE("huge", 0.875f, 24, pipeHugeFluid),
-    QUADRUPLE("quadruple", 0.95f, 2, pipeQuadrupleFluid, 4),
-    NONUPLE("nonuple", 0.95f, 2, pipeNonupleFluid, 9);
+    LARGE("large", 0.625f, 12, pipeLargeFluid),
+    HUGE("huge", 0.75f, 24, pipeHugeFluid),
+    QUADRUPLE("quadruple", 0.875f, 2, pipeQuadrupleFluid, 4),
+    NONUPLE("nonuple", 0.875f, 2, pipeNonupleFluid, 9);
 
     public static final ResourceLocation TYPE_ID = GTCEu.id("fluid");
 
@@ -72,17 +74,20 @@ public enum FluidPipeType implements IMaterialPipeType<FluidPipeProperties> {
         return TYPE_ID;
     }
 
-    public PipeModel createPipeModel(Material material) {
+    public PipeModel createPipeModel(PipeBlock<?, ?, ?> block, Material material, GTBlockstateProvider provider) {
+        String side = "block/pipe/pipe%s_side";
+        String end = "block/pipe/pipe_%s_in".formatted(name);
         if (material.hasProperty(PropertyKey.WOOD)) {
-            return new PipeModel(thickness, () -> GTCEu.id("block/pipe/pipe_side_wood"),
-                    () -> GTCEu.id("block/pipe/pipe_%s_in_wood".formatted(name)), null, null);
+            side += "_wood";
+            end += "_wood";
         }
-        return new PipeModel(thickness, () -> GTCEu.id("block/pipe/pipe_side"),
-                () -> GTCEu.id("block/pipe/pipe_%s_in".formatted(name)),
-                null, null/*
-                           * () -> GTCEu.id("block/pipe/pipe_side_secondary"), () ->
-                           * GTCEu.id("block/pipe/pipe_%s_in_secondary".formatted(name)) TODO enable once the textures
-                           * are added
-                           */);
+        if (channels == 9) {
+            side = side.formatted("_non");
+        } else if (channels == 4) {
+            side = side.formatted("_quad");
+        } else {
+            side = side.formatted("");
+        }
+        return new PipeModel(block, provider, thickness, GTCEu.id(side), GTCEu.id(end));
     }
 }

@@ -7,29 +7,27 @@ import com.gregtechceu.gtceu.api.cover.filter.SimpleFluidFilter;
 import com.gregtechceu.gtceu.api.gui.widget.EnumSelectorWidget;
 import com.gregtechceu.gtceu.api.gui.widget.IntInputWidget;
 import com.gregtechceu.gtceu.api.gui.widget.NumberInputWidget;
+import com.gregtechceu.gtceu.api.transfer.fluid.IFluidHandlerModifiable;
 import com.gregtechceu.gtceu.common.cover.data.BucketMode;
 import com.gregtechceu.gtceu.common.cover.data.VoidingMode;
+import com.gregtechceu.gtceu.utils.GTMath;
 
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
-import com.lowdragmc.lowdraglib.side.fluid.IFluidHandlerModifiable;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 
+import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
-
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
 public class AdvancedFluidVoidingCover extends FluidVoidingCover {
 
     @Persisted
@@ -46,8 +44,8 @@ public class AdvancedFluidVoidingCover extends FluidVoidingCover {
     @Getter
     private BucketMode transferBucketMode = BucketMode.MILLI_BUCKET;
 
-    private NumberInputWidget<Integer> stackSizeInput;
-    private EnumSelectorWidget<BucketMode> stackSizeBucketModeInput;
+    private @Nullable NumberInputWidget<Integer> stackSizeInput;
+    private @Nullable EnumSelectorWidget<BucketMode> stackSizeBucketModeInput;
 
     public AdvancedFluidVoidingCover(CoverDefinition definition, ICoverable coverHolder, Direction attachedSide) {
         super(definition, coverHolder, attachedSide);
@@ -59,30 +57,31 @@ public class AdvancedFluidVoidingCover extends FluidVoidingCover {
 
     @Override
     protected void doVoidFluids() {
-        IFluidHandlerModifiable fluidTransfer = getOwnFluidTransfer();
-        if (fluidTransfer == null) {
+        IFluidHandlerModifiable fluidHandler = getOwnFluidHandler();
+        if (fluidHandler == null) {
             return;
         }
 
         switch (voidingMode) {
-            case VOID_ANY -> voidAny(fluidTransfer);
-            case VOID_OVERFLOW -> voidOverflow(fluidTransfer);
+            case VOID_ANY -> voidAny(fluidHandler);
+            case VOID_OVERFLOW -> voidOverflow(fluidHandler);
         }
     }
 
-    private void voidOverflow(IFluidHandlerModifiable fluidTransfer) {
-        final Map<FluidStack, Integer> fluidAmounts = enumerateDistinctFluids(fluidTransfer, TransferDirection.EXTRACT);
+    private void voidOverflow(IFluidHandlerModifiable fluidHandler) {
+        var fluidAmounts = enumerateDistinctFluids(fluidHandler, TransferDirection.EXTRACT);
 
-        for (FluidStack fluidStack : fluidAmounts.keySet()) {
-            int presentAmount = fluidAmounts.get(fluidStack);
-            int targetAmount = getFilteredFluidAmount(fluidStack) * MILLIBUCKET_SIZE;
-            if (targetAmount <= 0L || targetAmount > presentAmount)
-                continue;
+        for (var entry : Object2LongMaps.fastIterable(fluidAmounts)) {
+            var stack = entry.getKey();
+            long presentAmount = entry.getLongValue();
+            int targetAmount = getFilteredFluidAmount(stack);
+            if (targetAmount <= 0L || targetAmount > presentAmount) continue;
 
-            var toDrain = fluidStack.copy();
-            toDrain.setAmount(presentAmount - targetAmount);
-
-            fluidTransfer.drain(toDrain, IFluidHandler.FluidAction.EXECUTE);
+            long diff = presentAmount - targetAmount;
+            for (int op : GTMath.split(diff)) {
+                var toDrain = stack.copyWithAmount(op);
+                fluidHandler.drain(toDrain, IFluidHandler.FluidAction.EXECUTE);
+            }
         }
     }
 
@@ -184,5 +183,21 @@ public class AdvancedFluidVoidingCover extends FluidVoidingCover {
     @Override
     public ManagedFieldHolder getFieldHolder() {
         return MANAGED_FIELD_HOLDER;
+    }
+
+    @Override
+    public CompoundTag copyConfig(CompoundTag tag) {
+        tag.putInt("voidingMode", getVoidingMode().ordinal());
+        tag.putInt("voidSize", getGlobalTransferSizeMillibuckets());
+        tag.putInt("voidBucketMode", getTransferBucketMode().ordinal());
+        return super.copyConfig(tag);
+    }
+
+    @Override
+    public void pasteConfig(ServerPlayer player, CompoundTag tag) {
+        setVoidingMode(VoidingMode.values()[tag.getInt("voidingMode")]);
+        setTransferBucketMode(BucketMode.values()[tag.getInt("voidBucketMode")]);
+        setCurrentBucketModeTransferSize(tag.getInt("voidSize"));
+        super.pasteConfig(player, tag);
     }
 }

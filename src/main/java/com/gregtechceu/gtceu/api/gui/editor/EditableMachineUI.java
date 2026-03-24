@@ -1,9 +1,9 @@
 package com.gregtechceu.gtceu.api.gui.editor;
 
+import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
+import com.gregtechceu.gtceu.api.registry.GTRegistries;
 
-import com.lowdragmc.lowdraglib.LDLib;
-import com.lowdragmc.lowdraglib.Platform;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurableWidget;
 import com.lowdragmc.lowdraglib.gui.editor.data.Resources;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
@@ -24,11 +24,6 @@ import java.io.InputStream;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
-/**
- * @author KilaBash
- * @date 2023/7/4
- * @implNote EditableMachineUI
- */
 public class EditableMachineUI implements IEditableUI<WidgetGroup, MetaMachine> {
 
     @Getter
@@ -66,7 +61,7 @@ public class EditableMachineUI implements IEditableUI<WidgetGroup, MetaMachine> 
             var nbt = getCustomUI();
             var group = new WidgetGroup();
             IConfigurableWidget.deserializeNBT(group, nbt.getCompound("root"),
-                    Resources.fromNBT(nbt.getCompound("resources")), false, Platform.getFrozenRegistry());
+                    Resources.fromNBT(nbt.getCompound("resources")), false, GTRegistries.builtinRegistry());
             group.setSelfPosition(new Position(0, 0));
             return group;
         }
@@ -76,10 +71,10 @@ public class EditableMachineUI implements IEditableUI<WidgetGroup, MetaMachine> 
     public CompoundTag getCustomUI() {
         if (this.customUICache == null) {
             ResourceManager resourceManager = null;
-            if (LDLib.isClient()) {
+            if (GTCEu.isClientSide()) {
                 resourceManager = Minecraft.getInstance().getResourceManager();
-            } else if (Platform.getMinecraftServer() != null) {
-                resourceManager = Platform.getMinecraftServer().getResourceManager();
+            } else if (GTCEu.getMinecraftServer() != null) {
+                resourceManager = GTCEu.getMinecraftServer().getResourceManager();
             }
             if (resourceManager == null) {
                 this.customUICache = new CompoundTag();

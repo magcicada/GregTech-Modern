@@ -22,11 +22,6 @@ public class SerializerDouble implements IContentSerializer<Double> {
     }
 
     @Override
-    public Codec<Double> codec() {
-        return Codec.DOUBLE;
-    }
-
-    @Override
     public Double of(Object o) {
         if (o instanceof Double) {
             return (Double) o;
@@ -41,5 +36,15 @@ public class SerializerDouble implements IContentSerializer<Double> {
     @Override
     public Double defaultValue() {
         return 0d;
+    }
+
+    @Override
+    public Class<Double> contentClass() {
+        return Double.class;
+    }
+
+    @Override
+    public Codec<Double> codec() {
+        return Codec.DOUBLE;
     }
 }

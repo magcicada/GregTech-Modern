@@ -1,120 +1,107 @@
 package com.gregtechceu.gtceu.api.recipe;
 
 import com.gregtechceu.gtceu.GTCEu;
-import com.gregtechceu.gtceu.api.material.ChemicalHelper;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
+import com.gregtechceu.gtceu.api.data.chemical.ChemicalHelper;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.data.GTMaterials;
+import com.gregtechceu.gtceu.common.data.GTRecipeSerializers;
 import com.gregtechceu.gtceu.common.item.behavior.FacadeItemBehaviour;
-import com.gregtechceu.gtceu.data.item.GTItems;
-import com.gregtechceu.gtceu.data.material.GTMaterials;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
-import com.mojang.serialization.MapCodec;
+import org.jetbrains.annotations.NotNull;
 
-import javax.annotation.ParametersAreNonnullByDefault;
+public class FacadeCoverRecipe extends CustomRecipe {
 
-/**
- * @author KilaBash
- * @date 2023/3/28
- * @implNote FacadeCoverRecipe
- */
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
-public class FacadeCoverRecipe implements CraftingRecipe {
+    public static final ResourceLocation ID = GTCEu.id("crafting/facade_cover");
+    private static TagKey<Item> IRON_PLATE_TAG;
 
-    public static final FacadeCoverRecipe INSTANCE = new FacadeCoverRecipe();
-    public static final MapCodec<FacadeCoverRecipe> CODEC = MapCodec.unit(INSTANCE);
-    public static final StreamCodec<RegistryFriendlyByteBuf, FacadeCoverRecipe> STREAM_CODEC = StreamCodec
-            .unit(INSTANCE);
-    public static final RecipeSerializer<FacadeCoverRecipe> SERIALIZER = new RecipeSerializer<>() {
-
-        @Override
-        public MapCodec<FacadeCoverRecipe> codec() {
-            return FacadeCoverRecipe.CODEC;
+    public FacadeCoverRecipe(CraftingBookCategory category) {
+        super(category);
+        if (IRON_PLATE_TAG == null) {
+            IRON_PLATE_TAG = ChemicalHelper.getTag(TagPrefix.plate, GTMaterials.Iron);
         }
-
-        @Override
-        public StreamCodec<RegistryFriendlyByteBuf, FacadeCoverRecipe> streamCodec() {
-            return FacadeCoverRecipe.STREAM_CODEC;
-        }
-    };
-
-    public static ResourceLocation ID = GTCEu.id("crafting/facade_cover");
+    }
 
     @Override
-    public boolean matches(CraftingInput container, Level level) {
-        int plateSize = 0;
+    public boolean matches(CraftingInput container, @NotNull Level level) {
+        boolean foundPlate = false;
         boolean foundBlockItem = false;
         for (int i = 0; i < container.size(); i++) {
             var item = container.getItem(i);
             if (item.isEmpty()) continue;
             if (FacadeItemBehaviour.isValidFacade(item)) {
+                if (foundBlockItem) {
+                    return false;
+                }
                 foundBlockItem = true;
-                continue;
+            } else if (item.is(IRON_PLATE_TAG)) {
+                if (foundPlate) {
+                    return false;
+                }
+                foundPlate = true;
+            } else {
+                return false;
             }
-            if (item.is(ChemicalHelper.getTag(TagPrefix.plate, GTMaterials.Iron))) {
-                plateSize++;
-                continue;
-            }
-            return false;
         }
-        return foundBlockItem && plateSize == 3;
+        return foundBlockItem && foundPlate;
     }
 
     @Override
-    public ItemStack assemble(CraftingInput container, HolderLookup.Provider provider) {
-        ItemStack itemStack = GTItems.COVER_FACADE.asStack(3);
+    public @NotNull ItemStack assemble(CraftingInput container, HolderLookup.@NotNull Provider provider) {
+        ItemStack itemStack = GTItems.COVER_FACADE.asStack();
+        BlockState facadeState = null;
+
         for (int i = 0; i < container.size(); i++) {
             var item = container.getItem(i);
             if (item.isEmpty()) continue;
             if (FacadeItemBehaviour.isValidFacade(item)) {
-                FacadeItemBehaviour.setFacadeStack(itemStack, item);
+                facadeState = FacadeItemBehaviour.getFacadeState(item);
                 break;
             }
         }
-        return itemStack;
+        if (facadeState != null) {
+            FacadeItemBehaviour.setFacadeState(itemStack, facadeState);
+            itemStack.setCount(6);
+            return itemStack;
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override
-    public NonNullList<Ingredient> getIngredients() {
-        TagKey<Item> ironPlate = ChemicalHelper.getTag(TagPrefix.plate, GTMaterials.Iron);
+    public @NotNull NonNullList<Ingredient> getIngredients() {
         return NonNullList.of(Ingredient.EMPTY,
-                Ingredient.of(ironPlate),
-                Ingredient.of(ironPlate),
-                Ingredient.of(ironPlate),
-                Ingredient.of(Blocks.STONE));
+                Ingredient.of(IRON_PLATE_TAG),
+                Ingredient.of(IRON_PLATE_TAG),
+                Ingredient.of(IRON_PLATE_TAG),
+                Ingredient.of(Items.STONE));
     }
 
     @Override
     public boolean canCraftInDimensions(int width, int height) {
-        return false;
+        return width * height >= 4;
     }
 
     @Override
-    public ItemStack getResultItem(HolderLookup.Provider provider) {
+    public @NotNull ItemStack getResultItem(HolderLookup.@NotNull Provider provider) {
         var result = GTItems.COVER_FACADE.asStack();
-        FacadeItemBehaviour.setFacadeStack(GTItems.COVER_FACADE.asStack(), new ItemStack(Blocks.STONE));
+        FacadeItemBehaviour.setFacadeState(GTItems.COVER_FACADE.asStack(), Blocks.STONE.defaultBlockState());
         return result;
     }
 
     @Override
-    public RecipeSerializer<?> getSerializer() {
-        return SERIALIZER;
-    }
-
-    @Override
-    public CraftingBookCategory category() {
-        return CraftingBookCategory.MISC;
+    public @NotNull RecipeSerializer<?> getSerializer() {
+        return GTRecipeSerializers.CRAFTING_FACADE_COVER.get();
     }
 }

@@ -7,12 +7,15 @@ import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.feature.ICleanroomProvider;
+import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
 import com.gregtechceu.gtceu.api.machine.feature.IMufflableMachine;
 import com.gregtechceu.gtceu.api.machine.feature.IRecipeLogicMachine;
 import com.gregtechceu.gtceu.api.machine.trait.IRecipeHandlerTrait;
 import com.gregtechceu.gtceu.api.machine.trait.MachineTrait;
+import com.gregtechceu.gtceu.api.machine.trait.RecipeHandlerList;
 import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
 import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
+import com.gregtechceu.gtceu.common.data.item.GTItemAbilities;
 
 import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
 import com.lowdragmc.lowdraglib.syncdata.ISubscription;
@@ -21,15 +24,16 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.annotation.RequireRerender;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
-import com.google.common.collect.Table;
-import com.google.common.collect.Tables;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
@@ -37,16 +41,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-/**
- * @author KilaBash
- * @date 2023/3/14
- * @implNote SteamWorkableMachine
- */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
-public abstract class SteamWorkableMachine extends SteamMachine implements IRecipeLogicMachine, IMufflableMachine {
+public abstract class SteamWorkableMachine extends SteamMachine
+                                           implements IRecipeLogicMachine, IMufflableMachine, IMachineLife {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(SteamWorkableMachine.class,
             SteamMachine.MANAGED_FIELD_HOLDER);
@@ -65,7 +61,6 @@ public abstract class SteamWorkableMachine extends SteamMachine implements IReci
     public int activeRecipeType;
     @Persisted
     @DescSynced
-    @Getter
     @RequireRerender
     protected Direction outputFacing;
     @Persisted
@@ -75,7 +70,9 @@ public abstract class SteamWorkableMachine extends SteamMachine implements IReci
     protected boolean isMuffled;
     protected boolean previouslyMuffled = true;
     @Getter
-    protected final Table<IO, RecipeCapability<?>, List<IRecipeHandler<?>>> capabilitiesProxy;
+    protected final Map<IO, List<RecipeHandlerList>> capabilitiesProxy;
+    @Getter
+    protected final Map<IO, Map<RecipeCapability<?>, List<IRecipeHandler<?>>>> capabilitiesFlat;
     protected final List<ISubscription> traitSubscriptions;
 
     public SteamWorkableMachine(IMachineBlockEntity holder, boolean isHighPressure, Object... args) {
@@ -83,7 +80,8 @@ public abstract class SteamWorkableMachine extends SteamMachine implements IReci
         this.recipeTypes = getDefinition().getRecipeTypes();
         this.activeRecipeType = 0;
         this.recipeLogic = createRecipeLogic(args);
-        this.capabilitiesProxy = Tables.newCustomTable(new EnumMap<>(IO.class), IdentityHashMap::new);
+        this.capabilitiesProxy = new EnumMap<>(IO.class);
+        this.capabilitiesFlat = new EnumMap<>(IO.class);
         this.traitSubscriptions = new ArrayList<>();
         this.outputFacing = hasFrontFacing() ? getFrontFacing().getOpposite() : Direction.UP;
     }
@@ -99,15 +97,19 @@ public abstract class SteamWorkableMachine extends SteamMachine implements IReci
     @Override
     public void onLoad() {
         super.onLoad();
+        // attach self traits
+        Map<IO, List<IRecipeHandler<?>>> ioTraits = new Object2ObjectOpenHashMap<>();
+
         for (MachineTrait trait : getTraits()) {
             if (trait instanceof IRecipeHandlerTrait<?> handlerTrait) {
-                if (!capabilitiesProxy.contains(handlerTrait.getHandlerIO(), handlerTrait.getCapability())) {
-                    capabilitiesProxy.put(handlerTrait.getHandlerIO(), handlerTrait.getCapability(), new ArrayList<>());
-                }
-                var handlers = capabilitiesProxy.get(handlerTrait.getHandlerIO(), handlerTrait.getCapability());
-                if (handlers != null) handlers.add(handlerTrait);
-                traitSubscriptions.add(handlerTrait.addChangedListener(recipeLogic::updateTickSubscription));
+                ioTraits.computeIfAbsent(handlerTrait.getHandlerIO(), i -> new ArrayList<>()).add(handlerTrait);
             }
+        }
+
+        for (var entry : ioTraits.entrySet()) {
+            var handlerList = RecipeHandlerList.of(entry.getKey(), entry.getValue());
+            this.addHandlerList(handlerList);
+            traitSubscriptions.add(handlerList.subscribe(recipeLogic::updateTickSubscription));
         }
     }
 
@@ -120,28 +122,51 @@ public abstract class SteamWorkableMachine extends SteamMachine implements IReci
         super.onUnload();
         traitSubscriptions.forEach(ISubscription::unsubscribe);
         traitSubscriptions.clear();
+        capabilitiesProxy.clear();
+        capabilitiesFlat.clear();
         recipeLogic.inValid();
+    }
+
+    public boolean hasOutputFacing() {
+        return true;
     }
 
     /**
      * @param outputFacing the facing to set
      */
     public void setOutputFacing(@NotNull Direction outputFacing) {
-        if (!hasFrontFacing() || this.outputFacing != getFrontFacing()) {
+        if (hasOutputFacing() && (!hasFrontFacing() || this.outputFacing != getFrontFacing())) {
             this.outputFacing = outputFacing;
         }
     }
 
-    @Override
-    protected ItemInteractionResult onWrenchClick(Player playerIn, InteractionHand hand, Direction gridSide,
-                                                  BlockHitResult hitResult) {
-        if (!playerIn.isShiftKeyDown() && !isRemote()) {
-            if (hasFrontFacing() && gridSide == getFrontFacing())
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-            setOutputFacing(gridSide);
-            return ItemInteractionResult.CONSUME;
+    public @Nullable Direction getOutputFacing() {
+        if (hasOutputFacing()) {
+            return outputFacing;
         }
-        return super.onWrenchClick(playerIn, hand, gridSide, hitResult);
+        return null;
+    }
+
+    @Override
+    public boolean isFacingValid(Direction facing) {
+        if (facing == getOutputFacing()) {
+            return false;
+        }
+        return super.isFacingValid(facing);
+    }
+
+    @Override
+    protected @NotNull ItemInteractionResult onWrenchClick(Player playerIn, InteractionHand hand, ItemStack held,
+                                                           Direction gridSide, BlockHitResult hitResult) {
+        if (!held.canPerformAction(GTItemAbilities.WRENCH_CONFIGURE)) {
+            return super.onWrenchClick(playerIn, hand, held, gridSide, hitResult);
+        }
+        if (!playerIn.isShiftKeyDown()) {
+            if (hasFrontFacing() && gridSide == getFrontFacing()) return ItemInteractionResult.FAIL;
+            setOutputFacing(gridSide);
+            return ItemInteractionResult.sidedSuccess(playerIn.level().isClientSide);
+        }
+        return super.onWrenchClick(playerIn, hand, held, gridSide, hitResult);
     }
 
     @Override
@@ -170,7 +195,8 @@ public abstract class SteamWorkableMachine extends SteamMachine implements IReci
     // ******* Rendering ********//
     //////////////////////////////////////
     @Override
-    public ResourceTexture sideTips(Player player, Set<GTToolType> toolTypes, Direction side) {
+    public ResourceTexture sideTips(Player player, BlockPos pos, BlockState state, Set<GTToolType> toolTypes,
+                                    ItemStack held, Direction side) {
         if (toolTypes.contains(GTToolType.WRENCH)) {
             if (!player.isShiftKeyDown()) {
                 if (!hasFrontFacing() || side != getFrontFacing()) {
@@ -178,6 +204,6 @@ public abstract class SteamWorkableMachine extends SteamMachine implements IReci
                 }
             }
         }
-        return super.sideTips(player, toolTypes, side);
+        return super.sideTips(player, pos, state, toolTypes, held, side);
     }
 }

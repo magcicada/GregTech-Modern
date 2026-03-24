@@ -2,7 +2,6 @@ package com.gregtechceu.gtceu.api.cover.filter;
 
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -14,11 +13,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-/**
- * @author KilaBash
- * @date 2023/3/14
- * @implNote FluidFilter
- */
 public interface FluidFilter extends Filter<FluidStack, FluidFilter> {
 
     Map<ItemLike, Function<ItemStack, FluidFilter>> FILTERS = new HashMap<>();
@@ -60,11 +54,6 @@ public interface FluidFilter extends Filter<FluidStack, FluidFilter> {
 
         @Override
         public WidgetGroup openConfigurator(int x, int y) {
-            throw new NotImplementedException("Not available for empty fluid filter");
-        }
-
-        @Override
-        public CompoundTag saveFilter() {
             throw new NotImplementedException("Not available for empty fluid filter");
         }
 

@@ -1,8 +1,5 @@
 package com.gregtechceu.gtceu.api.block;
 
-import com.lowdragmc.lowdraglib.client.renderer.IBlockRendererProvider;
-import com.lowdragmc.lowdraglib.client.renderer.IRenderer;
-
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -10,28 +7,22 @@ import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
-import net.minecraft.world.level.block.state.properties.BooleanProperty;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.world.level.block.state.properties.Property;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 
+import static com.gregtechceu.gtceu.common.data.GTBlockStateProperties.ACTIVE;
+
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
-public class ActiveBlock extends AppearanceBlock implements IBlockRendererProvider {
+public class ActiveBlock extends Block {
 
-    public static final BooleanProperty ACTIVE = BooleanProperty.create("active");
-
-    private final IRenderer renderer;
-    private final IRenderer activeRenderer;
-
-    public ActiveBlock(Properties properties, IRenderer renderer, IRenderer activeRenderer) {
+    public ActiveBlock(Properties properties) {
         super(properties);
         registerDefaultState(defaultBlockState().setValue(ACTIVE, false));
-        this.renderer = renderer;
-        this.activeRenderer = activeRenderer;
     }
 
     @Override
@@ -40,6 +31,10 @@ public class ActiveBlock extends AppearanceBlock implements IBlockRendererProvid
         builder.add(ACTIVE);
     }
 
+    /**
+     * Use {@link BlockState#setValue(Property, Comparable)}
+     */
+    @ApiStatus.Obsolete(since = "7.0.0")
     public BlockState changeActive(BlockState state, boolean active) {
         if (state.is(this)) {
             return state.setValue(ACTIVE, active);
@@ -47,20 +42,17 @@ public class ActiveBlock extends AppearanceBlock implements IBlockRendererProvid
         return state;
     }
 
+    /**
+     * Use {@link BlockState#getValue(Property)}
+     */
+    @ApiStatus.Obsolete(since = "7.0.0")
     public boolean isActive(BlockState state) {
         return state.getValue(ACTIVE);
     }
 
-    @Nullable
     @Override
-    @OnlyIn(Dist.CLIENT)
-    public IRenderer getRenderer(BlockState state) {
-        return isActive(state) ? activeRenderer : renderer;
-    }
-
-    @Override
-    public BlockState getBlockAppearance(BlockState state, BlockAndTintGetter level, BlockPos pos, Direction side,
-                                         BlockState sourceState, BlockPos sourcePos) {
+    public BlockState getAppearance(BlockState state, BlockAndTintGetter level, BlockPos pos, Direction side,
+                                    @Nullable BlockState sourceState, @Nullable BlockPos sourcePos) {
         return defaultBlockState();
     }
 }

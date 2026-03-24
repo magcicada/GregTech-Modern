@@ -2,7 +2,6 @@ package com.gregtechceu.gtceu.api.item.armor;
 
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -42,7 +41,10 @@ public interface IArmorLogic {
         return false;
     }
 
-    default void damageArmor(LivingEntity entity, ItemStack itemStack, DamageSource source, int damage) {}
+    default int damageArmor(@Nullable LivingEntity entity, ItemStack itemStack, int damage,
+                            EquipmentSlot equipmentSlot) {
+        return 0;
+    }
 
     default List<ItemAttributeModifiers.Entry> getDefaultAttributeModifiers(EquipmentSlot slot, ItemStack stack) {
         return Collections.emptyList();
@@ -66,7 +68,8 @@ public interface IArmorLogic {
     }
 
     @Nullable
-    ResourceLocation getArmorTexture(ItemStack stack, Entity entity, EquipmentSlot slot, ArmorMaterial.Layer layer);
+    ResourceLocation getArmorTexture(ItemStack stack, Entity entity,
+                                     EquipmentSlot slot, ArmorMaterial.Layer layer);
 
     @NotNull
     default HumanoidModel<?> getArmorModel(LivingEntity entityLiving, ItemStack itemStack, EquipmentSlot armorSlot,
@@ -81,4 +84,8 @@ public interface IArmorLogic {
     default float getHeatResistance() {
         return 1.0f;
     }
+
+    default void onEquip(Player player) {}
+
+    default void onUnequip(Player player) {}
 }

@@ -19,15 +19,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/**
- * @author KilaBash
- * @date 2023/2/21
- * @implNote SmeltingRecipeBuilder
- */
 @Accessors(chain = true, fluent = true)
 public class ShapelessRecipeBuilder {
 
-    private NonNullList<Ingredient> ingredients = NonNullList.create();
+    private final NonNullList<Ingredient> ingredients = NonNullList.create();
     @Setter
     protected String group;
     @Setter
@@ -79,16 +74,13 @@ public class ShapelessRecipeBuilder {
     }
 
     public ShapelessRecipe build() {
-        return new ShapelessRecipe(Objects.requireNonNullElse(this.group, ""), this.category, this.output,
-                this.ingredients);
+        return new ShapelessRecipe(Objects.requireNonNullElse(this.group, ""), this.category,
+                this.output, this.ingredients);
     }
 
     public void save(RecipeOutput consumer) {
         var recipeId = id == null ? defaultId() : id;
 
-        consumer.accept(
-                ResourceLocation.fromNamespaceAndPath(recipeId.getNamespace(), "shapeless" + "/" + recipeId.getPath()),
-                build(),
-                null);
+        consumer.accept(recipeId.withPrefix("shapeless/"), build(), null);
     }
 }

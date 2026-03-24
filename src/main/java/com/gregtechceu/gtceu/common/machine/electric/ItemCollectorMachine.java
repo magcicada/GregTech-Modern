@@ -1,6 +1,7 @@
 package com.gregtechceu.gtceu.common.machine.electric;
 
 import com.gregtechceu.gtceu.api.GTValues;
+import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
 import com.gregtechceu.gtceu.api.capability.IWorkable;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.cover.filter.ItemFilter;
@@ -9,24 +10,25 @@ import com.gregtechceu.gtceu.api.gui.WidgetUtils;
 import com.gregtechceu.gtceu.api.gui.editor.EditableMachineUI;
 import com.gregtechceu.gtceu.api.gui.editor.EditableUI;
 import com.gregtechceu.gtceu.api.gui.widget.IntInputWidget;
+import com.gregtechceu.gtceu.api.gui.widget.SlotWidget;
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.TieredEnergyMachine;
 import com.gregtechceu.gtceu.api.machine.feature.IAutoOutputItem;
 import com.gregtechceu.gtceu.api.machine.feature.IFancyUIMachine;
-import com.gregtechceu.gtceu.api.machine.feature.IMachineModifyDrops;
+import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
+import com.gregtechceu.gtceu.api.machine.property.GTMachineModelProperties;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
 import com.gregtechceu.gtceu.api.transfer.item.CustomItemStackHandler;
-import com.gregtechceu.gtceu.core.mixins.ItemEntityAccessor;
-import com.gregtechceu.gtceu.data.item.GTItems;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.data.item.GTItemAbilities;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.data.lang.LangHandler;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
+import com.gregtechceu.gtceu.utils.GTTransferUtils;
 
 import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
-import com.lowdragmc.lowdraglib.gui.widget.SlotWidget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
-import com.lowdragmc.lowdraglib.side.item.ItemTransferHelper;
 import com.lowdragmc.lowdraglib.syncdata.ISubscription;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
@@ -34,10 +36,10 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.RequireRerender;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 import com.lowdragmc.lowdraglib.utils.Position;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.TickTask;
@@ -48,7 +50,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -61,17 +63,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.BiFunction;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
 /**
  * @author h3tr
  * @date 2023/7/13
  * @implNote FisherMachine
  */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class ItemCollectorMachine extends TieredEnergyMachine
-                                  implements IAutoOutputItem, IFancyUIMachine, IMachineModifyDrops, IWorkable {
+                                  implements IAutoOutputItem, IFancyUIMachine, IMachineLife, IWorkable {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(ItemCollectorMachine.class,
             TieredEnergyMachine.MANAGED_FIELD_HOLDER);
@@ -81,6 +79,7 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     private static final double MOTION_MULTIPLIER = 0.04;
     private static final int BASE_EU_CONSUMPTION = 6;
 
+    @Nullable
     @Getter
     @Persisted
     @DescSynced
@@ -95,9 +94,9 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     protected final NotifiableItemStackHandler output;
 
     @Getter
-    @Persisted(subPersisted = true)
+    @Persisted
     protected final CustomItemStackHandler chargerInventory;
-    @Persisted(subPersisted = true)
+    @Persisted
     protected final CustomItemStackHandler filterInventory;
 
     @Nullable
@@ -148,16 +147,18 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     //////////////////////////////////////
 
     protected CustomItemStackHandler createChargerItemHandler() {
-        var transfer = new CustomItemStackHandler();
-        transfer.setFilter(item -> item.get(GTDataComponents.ENERGY_CONTENT) != null);
-        return transfer;
+        var handler = new CustomItemStackHandler();
+        handler.setFilter(item -> GTCapabilityHelper.getElectricItem(item) != null ||
+                (ConfigHolder.INSTANCE.compat.energy.nativeEUToFE &&
+                        GTCapabilityHelper.getForgeEnergyItem(item) != null));
+        return handler;
     }
 
     protected CustomItemStackHandler createFilterItemHandler() {
-        var transfer = new CustomItemStackHandler();
-        transfer.setFilter(
-                item -> item.is(GTItems.ITEM_FILTER.asItem()) || item.is(GTItems.ORE_DICTIONARY_FILTER.asItem()));
-        return transfer;
+        var handler = new CustomItemStackHandler();
+        handler.setFilter(
+                item -> item.is(GTItems.ITEM_FILTER.asItem()) || item.is(GTItems.TAG_FILTER.asItem()));
+        return handler;
     }
 
     @Override
@@ -209,9 +210,9 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     }
 
     @Override
-    public void onDrops(List<ItemStack> drops, Player entity) {
-        clearInventory(drops, chargerInventory);
-        clearInventory(drops, output.storage);
+    public void onMachineRemoved() {
+        clearInventory(chargerInventory);
+        clearInventory(output.storage);
     }
 
     //////////////////////////////////////
@@ -221,6 +222,7 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     public void updateCollectionSubscription() {
         if (drainEnergy(true) && isWorkingEnabled) {
             collectionSubs = subscribeServerTick(collectionSubs, this::update);
+            setActive(true);
             active = true;
         } else if (collectionSubs != null) {
             collectionSubs.unsubscribe();
@@ -229,13 +231,17 @@ public class ItemCollectorMachine extends TieredEnergyMachine
         }
     }
 
+    public void setActive(boolean active) {
+        this.active = active;
+        setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_ACTIVE, active));
+    }
+
     public void update() {
         if (drainEnergy(false)) {
             if (aabb == null || rangeDirty) {
                 rangeDirty = false;
-                BlockPos pos1, pos2;
-                pos1 = getPos().offset(-range, 0, -range);
-                pos2 = getPos().offset(range, 2, range);
+                BlockPos pos1 = getPos().offset(-range, 0, -range);
+                BlockPos pos2 = getPos().offset(range, 2, range);
                 this.aabb = AABB.of(BoundingBox.fromCorners(pos1, pos2));
             }
             moveItemsInRange();
@@ -257,8 +263,8 @@ public class ItemCollectorMachine extends TieredEnergyMachine
             double distZ = (centerPos.getZ() + 0.5) - itemEntity.position().z;
             double dist = Math.sqrt(Math.pow(distX, 2) + Math.pow(distZ, 2));
             if (dist >= 0.7f) {
-                if (((ItemEntityAccessor) itemEntity).getPickupDelay() == 32767) continue; // INFINITE_PICKUP_DELAY =
-                                                                                           // 32767
+                // ItemEntity.INFINITE_PICKUP_DELAY = 32767
+                if (itemEntity.pickupDelay == 32767) continue;
                 double dirX = distX / dist;
                 double dirZ = distZ / dist;
                 Vec3 delta = itemEntity.getDeltaMovement();
@@ -340,8 +346,7 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     protected void updateAutoOutputSubscription() {
         var outputFacing = getOutputFacingItems();
         if ((isAutoOutputItems() && !output.isEmpty()) && outputFacing != null &&
-                ItemTransferHelper.getItemTransfer(getLevel(), getPos().relative(outputFacing),
-                        outputFacing.getOpposite()) != null)
+                GTTransferUtils.hasAdjacentItemHandler(getLevel(), getPos(), outputFacing))
             autoOutputSubs = subscribeServerTick(autoOutputSubs, this::autoOutput);
         else if (autoOutputSubs != null) {
             autoOutputSubs.unsubscribe();
@@ -358,8 +363,9 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     }
 
     protected void chargeBattery() {
-        if (!energyContainer.dischargeOrRechargeEnergyContainers(chargerInventory, 0, false))
+        if (!energyContainer.dischargeOrRechargeEnergyContainers(chargerInventory, 0, false)) {
             updateBatterySubscription();
+        }
     }
 
     @Override
@@ -371,7 +377,7 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     }
 
     @Override
-    public void onNeighborChanged(Block block, BlockPos fromPos, boolean isMoving) {
+    public void onNeighborChanged(net.minecraft.world.level.block.Block block, BlockPos fromPos, boolean isMoving) {
         super.onNeighborChanged(block, fromPos, isMoving);
         updateAutoOutputSubscription();
     }
@@ -501,7 +507,8 @@ public class ItemCollectorMachine extends TieredEnergyMachine
     // ******* Rendering ********//
     //////////////////////////////////////
     @Override
-    public ResourceTexture sideTips(Player player, Set<GTToolType> toolTypes, Direction side) {
+    public ResourceTexture sideTips(Player player, BlockPos pos, BlockState state, Set<GTToolType> toolTypes,
+                                    ItemStack held, Direction side) {
         if (toolTypes.contains(GTToolType.WRENCH)) {
             if (!player.isShiftKeyDown()) {
                 if (!hasFrontFacing() || side != getFrontFacing()) {
@@ -516,21 +523,23 @@ public class ItemCollectorMachine extends TieredEnergyMachine
             return isWorkingEnabled ? GuiTextures.TOOL_PAUSE : GuiTextures.TOOL_START;
         }
 
-        return super.sideTips(player, toolTypes, side);
+        return super.sideTips(player, pos, state, toolTypes, held, side);
     }
 
     //////////////////////////////////////
     // ******* Interactions ********//
-    //////////////////////////////////////
+    /// ///////////////////////////////////
     @Override
-    protected ItemInteractionResult onWrenchClick(Player playerIn, InteractionHand hand, Direction gridSide,
+    protected ItemInteractionResult onWrenchClick(Player playerIn, InteractionHand hand, ItemStack held,
+                                                  Direction gridSide,
                                                   BlockHitResult hitResult) {
-        if (!playerIn.isShiftKeyDown() && !isRemote()) {
+        if (!held.canPerformAction(GTItemAbilities.WRENCH_CONFIGURE)) {
+            return super.onWrenchClick(playerIn, hand, held, gridSide, hitResult);
+        }
+        if (!playerIn.isShiftKeyDown()) {
             var tool = playerIn.getItemInHand(hand);
-            if (tool.getDamageValue() >= tool.getMaxDamage())
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-            if (hasFrontFacing() && gridSide == getFrontFacing())
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            if (tool.getDamageValue() >= tool.getMaxDamage()) return ItemInteractionResult.FAIL;
+            if (hasFrontFacing() && gridSide == getFrontFacing()) return ItemInteractionResult.FAIL;
 
             // important not to use getters here, which have different logic
             Direction itemFacing = this.outputFacingItems;
@@ -542,10 +551,28 @@ public class ItemCollectorMachine extends TieredEnergyMachine
                 // remove the output facing when wrenching the current one to disable it
                 setOutputFacingItems(null);
             }
-
-            return ItemInteractionResult.CONSUME;
+            return ItemInteractionResult.sidedSuccess(playerIn.level().isClientSide);
         }
 
-        return super.onWrenchClick(playerIn, hand, gridSide, hitResult);
+        return super.onWrenchClick(playerIn, hand, held, gridSide, hitResult);
+    }
+
+    @Override
+    protected ItemInteractionResult onSoftMalletClick(Player playerIn, InteractionHand hand, ItemStack held,
+                                                      Direction gridSide,
+                                                      BlockHitResult hitResult) {
+        if (!held.canPerformAction(GTItemAbilities.MALLET_PAUSE)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        var controllable = GTCapabilityHelper.getControllable(getLevel(), getPos(), gridSide);
+        if (controllable != null) {
+            if (!isRemote()) {
+                controllable.setWorkingEnabled(!controllable.isWorkingEnabled());
+                playerIn.sendSystemMessage(Component.translatable(controllable.isWorkingEnabled() ?
+                        "behaviour.soft_hammer.enabled" : "behaviour.soft_hammer.disabled"));
+            }
+            return ItemInteractionResult.CONSUME;
+        }
+        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 }

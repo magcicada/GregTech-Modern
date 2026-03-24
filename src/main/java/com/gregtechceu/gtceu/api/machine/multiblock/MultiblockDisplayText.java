@@ -2,7 +2,14 @@ package com.gregtechceu.gtceu.api.machine.multiblock;
 
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
+import com.gregtechceu.gtceu.api.capability.recipe.FluidRecipeCapability;
+import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
+import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
+import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
+import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
+import com.gregtechceu.gtceu.api.recipe.ingredient.IntProviderFluidIngredient;
+import com.gregtechceu.gtceu.api.recipe.ingredient.IntProviderIngredient;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.utils.FormattingUtil;
 import com.gregtechceu.gtceu.utils.GTUtil;
@@ -11,6 +18,8 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.fluids.FluidStack;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -33,6 +42,7 @@ public class MultiblockDisplayText {
         return new Builder(textList, isStructureFormed, showIncompleteStructureWarning);
     }
 
+    @SuppressWarnings("UnusedReturnValue")
     public static class Builder {
 
         private final List<Component> textList;
@@ -102,8 +112,9 @@ public class MultiblockDisplayText {
 
                 String energyFormatted = FormattingUtil.formatNumbers(maxVoltage);
                 // wrap in text component to keep it from being formatted
+                byte voltageTier = GTUtil.getFloorTierByVoltage(maxVoltage);
                 Component voltageName = Component.literal(
-                        GTValues.VNF[GTUtil.getFloorTierByVoltage(maxVoltage)]);
+                        GTValues.VNF[voltageTier]);
 
                 MutableComponent bodyText = Component.translatable("gtceu.multiblock.max_energy_per_tick",
                         energyFormatted, voltageName).withStyle(ChatFormatting.GRAY);
@@ -298,30 +309,225 @@ public class MultiblockDisplayText {
             return this;
         }
 
-        /**
-         * Adds a simple progress line that displays progress as a percentage.
-         * <br>
-         * Added if structure is formed and the machine is active.
-         *
-         * @param progressPercent Progress formatted as a range of [0,1] representing the progress of the recipe.
-         */
-        public Builder addProgressLine(double progressPercent) { // todo
+        public Builder addProgressLineOnlyPercent(double progressPercent) {
             if (!isStructureFormed || !isActive)
                 return this;
             int currentProgress = (int) (progressPercent * 100);
-            textList.add(Component.translatable("gtceu.multiblock.progress", currentProgress));
+            textList.add(Component.translatable("gtceu.multiblock.progress_percent", currentProgress));
             return this;
         }
 
         /**
-         * Adds a line indicating how many parallels this multi can potentially perform.
-         * <br>
-         * Added if structure is formed and the number of parallels is greater than one.
+         * Adds a progress line based on the recipe logic.
+         *
+         * @param recipeLogic The recipe logic that provides the progress info
+         *
+         * @see #addProgressLine(double, double, double)
+         * @see #addCustomProgressLine(RecipeLogic)
          */
-        public Builder addMachineModeLine(GTRecipeType recipeType, GTRecipeType[] possibleTypes) {
-            if (!isStructureFormed)
+        public Builder addProgressLine(RecipeLogic recipeLogic) {
+            if (recipeLogic.hasCustomProgressLine()) {
+                return this.addCustomProgressLine(recipeLogic);
+            } else {
+                return this.addProgressLine(recipeLogic.getProgress(), recipeLogic.getMaxProgress(),
+                        recipeLogic.getProgressPercent());
+            }
+        }
+
+        /**
+         * Adds a simple progress line that displays the current time of a recipe and its progress as a percentage.
+         * <br>
+         * Added if structure is formed and the machine is active.
+         *
+         * @param currentDuration The current duration of the recipe in ticks
+         * @param maxDuration     The max duration of the recipe in ticks
+         * @param progressPercent Progress formatted as a range of [0,1] representing the progress of the recipe.
+         */
+        public Builder addProgressLine(double currentDuration, double maxDuration, double progressPercent) {
+            if (!isStructureFormed || !isActive)
                 return this;
-            if (possibleTypes.length <= 1)
+            int currentProgress = (int) (progressPercent * 100);
+            double currentInSec = currentDuration / 20.0;
+            double maxInSec = maxDuration / 20.0;
+            textList.add(Component.translatable("gtceu.multiblock.progress",
+                    String.format("%.2f", (float) currentInSec),
+                    String.format("%.2f", (float) maxInSec), currentProgress));
+            return this;
+        }
+
+        /**
+         * Adds a customized progress line that is often used to display the current time of a recipe and its progress
+         * as a percentage.
+         * <p>
+         * Added if structure if formed and the machine is active.
+         *
+         * @param recipeLogic The recipe logic that provides the line
+         */
+        public Builder addCustomProgressLine(RecipeLogic recipeLogic) {
+            if (!isStructureFormed || !isActive)
+                return this;
+            Component line = recipeLogic.getCustomProgressLine();
+            if (line != null) {
+                textList.add(line);
+            }
+            return this;
+        }
+
+        public Builder addRecipeFailReasonLine(RecipeLogic recipeLogic) {
+            if (!isStructureFormed || !recipeLogic.isIdle())
+                return this;
+            var reasons = recipeLogic.getFailureReasons();
+            if (!reasons.isEmpty()) {
+                textList.add(Component.translatable("gtceu.recipe_logic.setup_fail").withStyle(ChatFormatting.RED));
+                for (var reason : reasons) {
+                    textList.add(Component.literal(" - ").append(reason));
+                }
+            }
+            return this;
+        }
+
+        public Builder addBatchModeLine(boolean batchEnabled, int batchAmount) {
+            if (batchEnabled && batchAmount > 0) {
+                Component runs = Component.literal(FormattingUtil.formatNumbers(batchAmount))
+                        .withStyle(ChatFormatting.DARK_PURPLE);
+                String key = "gtceu.multiblock.batch_enabled";
+                textList.add(Component.translatable(key, runs)
+                        .withStyle(ChatFormatting.GRAY));
+            }
+            return this;
+        }
+
+        public Builder addSubtickParallelsLine(int subtickParallels) {
+            if (subtickParallels > 1) {
+                Component runs = Component.literal(FormattingUtil.formatNumbers(subtickParallels))
+                        .withStyle(ChatFormatting.DARK_PURPLE);
+                String key = "gtceu.multiblock.subtick_parallels";
+                textList.add(Component.translatable(key, runs)
+                        .withStyle(ChatFormatting.GRAY));
+            }
+            return this;
+        }
+
+        public Builder addTotalRunsLine(int totalRuns) {
+            if (totalRuns > 1) {
+                Component runs = Component.literal(FormattingUtil.formatNumbers(totalRuns))
+                        .withStyle(ChatFormatting.DARK_PURPLE);
+                String key = "gtceu.multiblock.total_runs";
+                textList.add(Component.translatable(key, runs)
+                        .withStyle(ChatFormatting.GRAY));
+            }
+            return this;
+        }
+
+        public Builder addOutputLines(GTRecipe recipe) {
+            if (!isStructureFormed || !isActive)
+                return this;
+            if (recipe != null) {
+                int recipeTier = RecipeHelper.getPreOCRecipeEuTier(recipe);
+                int chanceTier = recipeTier + recipe.ocLevel;
+                var function = recipe.getType().getChanceFunction();
+                double maxDurationSec = (double) recipe.duration / 20.0;
+                var itemOutputs = recipe.getOutputContents(ItemRecipeCapability.CAP);
+                var fluidOutputs = recipe.getOutputContents(FluidRecipeCapability.CAP);
+                int runs = recipe.getTotalRuns();
+
+                for (var item : itemOutputs) {
+                    boolean rounded = false;
+                    ItemStack stack;
+                    // number of items output by a non-ranged ingredient
+                    int count = 0;
+                    // number of items output, but stored as a double. Used for accurate items/second display.
+                    double countD = 1;
+                    // number of items output which is actually displayed. Can be either a number, or a range.
+                    Component displaycount;
+                    if (item.content instanceof IntProviderIngredient provider) {
+                        rounded = true;
+                        stack = provider.getMaxSizeStack();
+                        displaycount = Component.translatable("gtceu.gui.content.range",
+                                provider.getCountProvider().getMinValue(),
+                                provider.getCountProvider().getMaxValue());
+                        if (item.chance < item.maxChance) {
+                            countD = countD * runs * function.getBoostedChance(item, recipeTier, chanceTier) /
+                                    item.maxChance;
+                        }
+                        countD = countD * provider.getMidRoll();
+                    } else {
+                        var stacks = ItemRecipeCapability.CAP.of(item.content).getItems();
+                        if (stacks.length == 0) continue;
+                        stack = stacks[0];
+                        count = stack.getCount();
+                        countD *= count;
+                        if (item.chance < item.maxChance) {
+                            rounded = true;
+                            countD = countD * runs * function.getBoostedChance(item, recipeTier, chanceTier) /
+                                    item.maxChance;
+                        }
+                        count = Math.max(1, (int) Math.round(countD));
+                        displaycount = Component.literal(String.valueOf(count));
+                    }
+                    if (countD < maxDurationSec) {
+                        String key = "gtceu.multiblock.output_line." + (rounded ? "2" : "0");
+                        textList.add(Component.translatable(key, stack.getHoverName(), displaycount,
+                                FormattingUtil.formatNumber2Places(maxDurationSec / countD)));
+                    } else {
+                        String key = "gtceu.multiblock.output_line." + (rounded ? "3" : "1");
+                        textList.add(Component.translatable(key, stack.getHoverName(), displaycount,
+                                FormattingUtil.formatNumber2Places(countD / maxDurationSec)));
+                    }
+                }
+                for (var fluid : fluidOutputs) {
+                    boolean rounded = false;
+                    FluidStack stack;
+                    // amount of fluid output by a non-ranged ingredient
+                    int amount = 0;
+                    // amount of fluid output, but stored as a double. Used for accurate fluid/second display.
+                    double amountD = 1;
+                    // amount of fluid output which is actually displayed. Can be either a number, or a range.
+                    Component displaycount;
+                    if (fluid.content instanceof IntProviderFluidIngredient provider) {
+                        rounded = true;
+                        stack = provider.getMaxSizeStack();
+                        displaycount = Component.translatable("gtceu.gui.content.range",
+                                provider.getCountProvider().getMinValue(),
+                                provider.getCountProvider().getMaxValue());
+                        if (fluid.chance < fluid.maxChance) {
+                            amountD = amountD * runs * function.getBoostedChance(fluid, recipeTier, chanceTier) /
+                                    fluid.maxChance;
+                        }
+                        amountD = amountD * provider.getMidRoll();
+                    } else {
+                        var stacks = FluidRecipeCapability.CAP.of(fluid.content).getFluids();
+                        if (stacks.length == 0) continue;
+                        stack = stacks[0];
+                        amount = stack.getAmount();
+                        amountD *= amount;
+                        if (fluid.chance < fluid.maxChance) {
+                            rounded = true;
+                            amountD = amountD * runs * function.getBoostedChance(fluid, recipeTier, chanceTier) /
+                                    fluid.maxChance;
+                        }
+                        amount = Math.max(1, (int) Math.round(amountD));
+                        displaycount = Component.literal(String.valueOf(amount));
+                    }
+                    if (amountD < maxDurationSec) {
+                        String key = "gtceu.multiblock.output_line." + (rounded ? "2" : "0");
+                        textList.add(Component.translatable(key, stack.getHoverName(), displaycount,
+                                FormattingUtil.formatNumber2Places(maxDurationSec / amountD)));
+                    } else {
+                        String key = "gtceu.multiblock.output_line." + (rounded ? "3" : "1");
+                        textList.add(Component.translatable(key, stack.getHoverName(), displaycount,
+                                FormattingUtil.formatNumber2Places(amountD / maxDurationSec)));
+                    }
+                }
+            }
+            return this;
+        }
+
+        /**
+         * Adds a line indicating the current mode of the multi
+         */
+        public Builder addMachineModeLine(GTRecipeType recipeType, boolean hasMultipleModes) {
+            if (!isStructureFormed || !hasMultipleModes)
                 return this;
             textList.add(Component
                     .translatable("gtceu.gui.machinemode", recipeType.getName())
@@ -329,21 +535,24 @@ public class MultiblockDisplayText {
             return this;
         }
 
+        public Builder addParallelsLine(int numParallels) {
+            return addParallelsLine(numParallels, false);
+        }
+
         /**
          * Adds a line indicating how many parallels this multi can potentially perform.
          * <br>
          * Added if structure is formed and the number of parallels is greater than one.
          */
-        public Builder addParallelsLine(int numParallels) {
+        public Builder addParallelsLine(int numParallels, boolean exact) {
             if (!isStructureFormed)
                 return this;
             if (numParallels > 1) {
                 Component parallels = Component.literal(FormattingUtil.formatNumbers(numParallels))
                         .withStyle(ChatFormatting.DARK_PURPLE);
-
-                textList.add(Component.translatable(
-                        "gtceu.multiblock.parallel",
-                        parallels)
+                String key = "gtceu.multiblock.parallel";
+                if (exact) key += ".exact";
+                textList.add(Component.translatable(key, parallels)
                         .withStyle(ChatFormatting.GRAY));
             }
             return this;
@@ -473,7 +682,7 @@ public class MultiblockDisplayText {
          * Added if structure is formed, the machine is active, and the passed fuelName parameter is not null.
          */
         public Builder addFuelNeededLine(String fuelName, int previousRecipeDuration) {
-            if (!isStructureFormed || !isActive)
+            if (!isStructureFormed || !isActive || fuelName == null)
                 return this;
             Component fuelNeeded = Component.literal(fuelName).withStyle(ChatFormatting.RED);
             Component numTicks = Component.literal(FormattingUtil.formatNumbers(previousRecipeDuration))
@@ -497,6 +706,15 @@ public class MultiblockDisplayText {
          */
         public Builder addCustom(Consumer<List<Component>> customConsumer) {
             customConsumer.accept(textList);
+            return this;
+        }
+
+        /*
+         * Add a line specifying the current EU/t
+         */
+        public Builder addCurrentEnergyProductionLine(long euOutput) {
+            textList.add(Component.translatable("gtceu.multiblock.turbine.energy_per_tick_maxed",
+                    FormattingUtil.formatNumbers(euOutput)).withStyle(ChatFormatting.GRAY));
             return this;
         }
     }

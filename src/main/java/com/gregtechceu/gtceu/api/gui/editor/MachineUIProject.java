@@ -4,7 +4,6 @@ import com.gregtechceu.gtceu.api.machine.MachineDefinition;
 import com.gregtechceu.gtceu.api.registry.GTRegistries;
 
 import com.lowdragmc.lowdraglib.LDLib;
-import com.lowdragmc.lowdraglib.Platform;
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
@@ -33,11 +32,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
 
-/**
- * @author KilaBash
- * @date 2023/3/29
- * @implNote RecipeTypeUIProject
- */
 @LDLRegister(name = "mui", group = "editor.gtceu")
 public class MachineUIProject extends UIProject {
 
@@ -86,8 +80,8 @@ public class MachineUIProject extends UIProject {
     }
 
     @Override
-    public void deserializeNBT(CompoundTag tag, HolderLookup.Provider provider) {
-        super.deserializeNBT(tag, provider);
+    public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
+        super.deserializeNBT(provider, tag);
         if (tag.contains("machine")) {
             machineDefinition = GTRegistries.MACHINES.get(ResourceLocation.parse(tag.getString("machine")));
         }
@@ -104,8 +98,11 @@ public class MachineUIProject extends UIProject {
                 new UIMainPanel(editor, root, machineDefinition == null ? null : machineDefinition.getDescriptionId()));
 
         for (WidgetToolBox.Default tab : WidgetToolBox.Default.TABS) {
+            if (tab == WidgetToolBox.Default.CONTAINER) {
+                continue;
+            }
             editor.getToolPanel().addNewToolBox("ldlib.gui.editor.group." + tab.groupName, tab.icon,
-                    tab.createToolBox());
+                    tab::createToolBox);
         }
     }
 
@@ -142,7 +139,7 @@ public class MachineUIProject extends UIProject {
                         m.leaf(new ItemStackTexture(definition.asStack()), definition.getDescriptionId(), () -> {
                             root.clearAllWidgets();
                             if (editableUI.hasCustomUI()) {
-                                deserializeNBT(editableUI.getCustomUI(), Platform.getFrozenRegistry());
+                                deserializeNBT(GTRegistries.builtinRegistry(), editableUI.getCustomUI());
                             } else {
                                 var template = editableUI.createDefault();
                                 template.setSelfPosition(

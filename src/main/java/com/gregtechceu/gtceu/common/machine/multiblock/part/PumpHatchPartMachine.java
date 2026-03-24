@@ -3,28 +3,23 @@ package com.gregtechceu.gtceu.common.machine.multiblock.part;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.gui.UITemplate;
+import com.gregtechceu.gtceu.api.gui.widget.TankWidget;
 import com.gregtechceu.gtceu.api.gui.widget.ToggleButtonWidget;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableFluidTank;
-import com.gregtechceu.gtceu.data.material.GTMaterials;
+import com.gregtechceu.gtceu.common.data.GTMaterials;
 
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib.gui.widget.LabelWidget;
-import com.lowdragmc.lowdraglib.gui.widget.TankWidget;
-import com.lowdragmc.lowdraglib.side.fluid.FluidHelper;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.world.entity.player.Player;
+import net.neoforged.neoforge.fluids.FluidType;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class PumpHatchPartMachine extends FluidHatchPartMachine {
 
     public PumpHatchPartMachine(IMachineBlockEntity holder, Object... args) {
-        super(holder, 0, IO.OUT, FluidHelper.getBucket(), 1, args);
+        super(holder, 0, IO.OUT, FluidType.BUCKET_VOLUME, 1, args);
     }
 
     @Override
@@ -49,5 +44,12 @@ public class PumpHatchPartMachine extends FluidHatchPartMachine {
                         .setShouldUseBaseBackground()
                         .setTooltipText("gtceu.gui.fluid_auto_input.tooltip"))
                 .widget(UITemplate.bindPlayerInventory(entityPlayer.getInventory(), GuiTextures.SLOT, 7, 84, true));
+    }
+
+    // By returning false here, we don't allow shift-clicking
+    // with a screwdriver to swap the IO.
+    @Override
+    public boolean swapIO() {
+        return false;
     }
 }

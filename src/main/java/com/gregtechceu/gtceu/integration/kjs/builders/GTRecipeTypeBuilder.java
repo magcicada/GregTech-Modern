@@ -4,9 +4,9 @@ import com.gregtechceu.gtceu.api.capability.recipe.*;
 import com.gregtechceu.gtceu.api.gui.SteamTexture;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
-import com.gregtechceu.gtceu.api.registry.registrate.BuilderBase;
 import com.gregtechceu.gtceu.api.sound.SoundEntry;
-import com.gregtechceu.gtceu.data.recipe.GTRecipeTypes;
+import com.gregtechceu.gtceu.common.data.GTRecipeTypes;
+import com.gregtechceu.gtceu.integration.kjs.helpers.GTResourceLocation;
 
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.texture.ProgressTexture;
@@ -16,6 +16,7 @@ import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
+import dev.latvian.mods.kubejs.registry.BuilderBase;
 import it.unimi.dsi.fastutil.bytes.Byte2ObjectArrayMap;
 import it.unimi.dsi.fastutil.bytes.Byte2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -27,6 +28,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
+@SuppressWarnings("unused")
 @Accessors(chain = true)
 public class GTRecipeTypeBuilder extends BuilderBase<GTRecipeType> {
 
@@ -34,32 +36,32 @@ public class GTRecipeTypeBuilder extends BuilderBase<GTRecipeType> {
     public transient final Object2IntMap<RecipeCapability<?>> maxInputs;
     public transient final Object2IntMap<RecipeCapability<?>> maxOutputs;
     private ProgressTexture progressBarTexture;
+    @Nullable
     private SteamTexture steamProgressBarTexture;
     private ProgressTexture.FillDirection steamMoveType;
     private transient final Byte2ObjectMap<IGuiTexture> slotOverlays;
+    @Setter
     @Nullable
+    protected transient SoundEntry sound;
     @Setter
-    protected SoundEntry sound;
+    protected transient boolean hasResearchSlot;
     @Setter
-    protected int maxTooltips;
-    @Setter
-    protected boolean isFuelRecipeType;
-    @Setter
-    protected boolean isScanner;
-    @Setter
-    protected boolean hasResearchSlot;
+    protected transient int maxTooltips;
 
     @Setter
-    private GTRecipeType smallRecipeMap;
+    @Nullable
+    private transient GTRecipeType smallRecipeMap;
     @Setter
-    private Supplier<ItemStack> iconSupplier;
+    @Nullable
+    private transient Supplier<ItemStack> iconSupplier;
     @Nullable
     @Setter
-    protected BiConsumer<GTRecipe, WidgetGroup> uiBuilder;
+    protected transient BiConsumer<GTRecipe, WidgetGroup> uiBuilder;
 
-    public GTRecipeTypeBuilder(ResourceLocation i, Object... args) {
-        super(i);
-        name = i.getPath();
+    public GTRecipeTypeBuilder(ResourceLocation i) {
+        super(GTResourceLocation.implicitAsGtceu(i));
+        name = this.id.getPath();
+        category = "custom";
         maxInputs = new Object2IntOpenHashMap<>();
         maxOutputs = new Object2IntOpenHashMap<>();
         progressBarTexture = new ProgressTexture();
@@ -67,8 +69,8 @@ public class GTRecipeTypeBuilder extends BuilderBase<GTRecipeType> {
         steamMoveType = ProgressTexture.FillDirection.LEFT_TO_RIGHT;
         slotOverlays = new Byte2ObjectArrayMap<>();
         this.sound = null;
-        this.maxTooltips = 3;
-        this.isFuelRecipeType = false;
+        this.hasResearchSlot = false;
+        this.maxTooltips = 4;
         this.smallRecipeMap = null;
         this.iconSupplier = null;
         this.uiBuilder = null;
@@ -130,20 +132,25 @@ public class GTRecipeTypeBuilder extends BuilderBase<GTRecipeType> {
     }
 
     @Override
-    public GTRecipeType register() {
+    public String getTranslationKeyGroup() {
+        return GTRecipeType.LANGUAGE_KEY_PATH;
+    }
+
+    @Override
+    public GTRecipeType createObject() {
         var type = GTRecipeTypes.register(name, category);
         type.maxInputs.putAll(maxInputs);
         type.maxOutputs.putAll(maxOutputs);
-        type.getSlotOverlays().putAll(slotOverlays);
+        type.getRecipeUI().getSlotOverlays().putAll(slotOverlays);
         type.getRecipeUI().setProgressBarTexture(progressBarTexture);
         type.getRecipeUI().setSteamProgressBarTexture(steamProgressBarTexture);
         type.getRecipeUI().setSteamMoveType(steamMoveType);
         type.setSound(sound);
+        type.setHasResearchSlot(hasResearchSlot);
         type.setMaxTooltips(maxTooltips);
-        type.setFuelRecipeType(isFuelRecipeType);
         type.setSmallRecipeMap(smallRecipeMap);
         type.setIconSupplier(iconSupplier);
         type.setUiBuilder(uiBuilder);
-        return value = type;
+        return type;
     }
 }

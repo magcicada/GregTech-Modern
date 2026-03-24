@@ -10,7 +10,6 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.annotation.RequireRerender;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
@@ -22,10 +21,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.Nullable;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class FacadeCover extends CoverBehavior {
 
     public static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(FacadeCover.class,
@@ -47,9 +42,9 @@ public class FacadeCover extends CoverBehavior {
     }
 
     @Override
-    public void onAttached(ItemStack itemStack, ServerPlayer player) {
+    public void onAttached(ItemStack itemStack, @Nullable ServerPlayer player) {
         super.onAttached(itemStack, player);
-        facadeState = FacadeItemBehaviour.getFacadeState(itemStack);
+        this.facadeState = FacadeItemBehaviour.getFacadeState(itemStack);
     }
 
     @Override
@@ -65,7 +60,7 @@ public class FacadeCover extends CoverBehavior {
     }
 
     @Nullable
-    public BlockState getAppearance(BlockState sourceState, BlockPos sourcePos) {
+    public BlockState getAppearance(@Nullable BlockState sourceState, @Nullable BlockPos sourcePos) {
         return facadeState;
     }
 }

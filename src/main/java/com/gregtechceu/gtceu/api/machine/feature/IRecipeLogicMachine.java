@@ -6,25 +6,18 @@ import com.gregtechceu.gtceu.api.capability.recipe.IRecipeCapabilityHolder;
 import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
+import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
 import com.gregtechceu.gtceu.config.ConfigHolder;
+import com.gregtechceu.gtceu.integration.jade.provider.RecipeLogicProvider;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * @author KilaBash
- * @date 2023/2/20
- * @implNote IRecipeMachine
- *           A machine can handle recipes.
+ * A machine can handle recipes.
  */
 public interface IRecipeLogicMachine extends IRecipeCapabilityHolder, IMachineFeature, IWorkable, ICleanroomReceiver,
                                      IVoidable {
-
-    @Override
-    default int getChanceTier() {
-        return self() instanceof ITieredMachine tieredMachine ? tieredMachine.getTier() :
-                self().getDefinition().getTier();
-    }
 
     /**
      * RecipeType held
@@ -51,19 +44,19 @@ public interface IRecipeLogicMachine extends IRecipeCapabilityHolder, IMachineFe
     RecipeLogic getRecipeLogic();
 
     default GTRecipe fullModifyRecipe(GTRecipe recipe) {
-        return doModifyRecipe(recipe.trimRecipeOutputs(this.getOutputLimits()));
+        return doModifyRecipe(RecipeHelper.trimRecipeOutputs(recipe, this.getOutputLimits()));
     }
 
     /**
      * Override it to modify recipe on the fly e.g. applying overclock, change chance, etc
-     * 
+     *
      * @param recipe recipe from detected from GTRecipeType
      * @return modified recipe.
      *         null -- this recipe is unavailable
      */
     @Nullable
     default GTRecipe doModifyRecipe(GTRecipe recipe) {
-        return self().getDefinition().getRecipeModifier().apply(self(), recipe);
+        return self().getDefinition().getRecipeModifier().applyModifier(self(), recipe);
     }
 
     /**
@@ -113,8 +106,8 @@ public interface IRecipeLogicMachine extends IRecipeCapabilityHolder, IMachineFe
     /**
      * Whether progress decrease when machine is waiting for pertick ingredients. (e.g. lack of EU)
      */
-    default boolean dampingWhenWaiting() {
-        return true;
+    default boolean regressWhenWaiting() {
+        return self().getDefinition().isRegressWhenWaiting();
     }
 
     /**
@@ -134,6 +127,14 @@ public interface IRecipeLogicMachine extends IRecipeCapabilityHolder, IMachineFe
                 (!(self() instanceof IMufflableMachine mufflableMachine) || !mufflableMachine.isMuffled());
     }
 
+    /**
+     * Display recipe voltage used by {@link RecipeLogicProvider}
+     */
+
+    default long getDisplayRecipeVoltage() {
+        return -1;
+    }
+
     //////////////////////////////////////
     // ******* IWorkable ********//
     //////////////////////////////////////
@@ -145,6 +146,16 @@ public interface IRecipeLogicMachine extends IRecipeCapabilityHolder, IMachineFe
     @Override
     default void setWorkingEnabled(boolean isWorkingAllowed) {
         getRecipeLogic().setWorkingEnabled(isWorkingAllowed);
+    }
+
+    @Override
+    default void setSuspendAfterFinish(boolean suspendAfterFinish) {
+        getRecipeLogic().setSuspendAfterFinish(suspendAfterFinish);
+    }
+
+    @Override
+    default boolean isSuspendAfterFinish() {
+        return getRecipeLogic().isSuspendAfterFinish();
     }
 
     @Override

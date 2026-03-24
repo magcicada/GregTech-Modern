@@ -3,12 +3,11 @@ package com.gregtechceu.gtceu.api.recipe;
 import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
 import com.gregtechceu.gtceu.api.capability.IElectricItem;
 import com.gregtechceu.gtceu.api.item.datacomponents.SimpleEnergyContent;
+import com.gregtechceu.gtceu.common.data.GTRecipeSerializers;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
 import com.gregtechceu.gtceu.core.mixins.ShapedRecipeAccessor;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
-import com.gregtechceu.gtceu.utils.StreamCodecUtils;
+import com.gregtechceu.gtceu.utils.codec.StreamCodecUtils;
 
-import net.minecraft.FieldsAreNonnullByDefault;
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -20,17 +19,10 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import lombok.Getter;
+import org.jetbrains.annotations.NotNullByDefault;
 
-/**
- * @author Irgendwer01
- * @date 2023/11/4
- * @implNote ShapedEnergyTransferRecipe
- */
-@MethodsReturnNonnullByDefault
-@FieldsAreNonnullByDefault
+@NotNullByDefault
 public class ShapedEnergyTransferRecipe extends ShapedRecipe {
-
-    public static final RecipeSerializer<ShapedEnergyTransferRecipe> SERIALIZER = new Serializer();
 
     @Getter
     private final Ingredient chargeIngredient;
@@ -87,6 +79,11 @@ public class ShapedEnergyTransferRecipe extends ShapedRecipe {
         return resultStack;
     }
 
+    @Override
+    public RecipeSerializer<?> getSerializer() {
+        return GTRecipeSerializers.CRAFTING_SHAPED_ENERGY_TRANSFER.get();
+    }
+
     public static class Serializer implements RecipeSerializer<ShapedEnergyTransferRecipe> {
 
         public static final MapCodec<ShapedEnergyTransferRecipe> CODEC = RecordCodecBuilder
@@ -94,7 +91,7 @@ public class ShapedEnergyTransferRecipe extends ShapedRecipe {
                         Codec.STRING.optionalFieldOf("group", "").forGetter(ShapedRecipe::getGroup),
                         CraftingBookCategory.CODEC.fieldOf("category").orElse(CraftingBookCategory.MISC)
                                 .forGetter(ShapedRecipe::category),
-                        ShapedRecipePattern.MAP_CODEC.forGetter(val -> ((ShapedRecipeAccessor) val).getPattern()),
+                        ShapedRecipePattern.MAP_CODEC.forGetter(val -> val.pattern),
                         Ingredient.CODEC.fieldOf("chargeIngredient")
                                 .forGetter(ShapedEnergyTransferRecipe::getChargeIngredient),
                         Codec.BOOL.fieldOf("overrideCharge").forGetter(ShapedEnergyTransferRecipe::isOverrideCharge),
@@ -108,7 +105,7 @@ public class ShapedEnergyTransferRecipe extends ShapedRecipe {
                 .composite(
                         ByteBufCodecs.STRING_UTF8, ShapedRecipe::getGroup,
                         CraftingBookCategory.STREAM_CODEC, ShapedRecipe::category,
-                        ShapedRecipePattern.STREAM_CODEC, val -> ((ShapedRecipeAccessor) val).getPattern(),
+                        ShapedRecipePattern.STREAM_CODEC, val -> val.pattern,
                         Ingredient.CONTENTS_STREAM_CODEC, ShapedEnergyTransferRecipe::getChargeIngredient,
                         ByteBufCodecs.BOOL, ShapedEnergyTransferRecipe::isOverrideCharge,
                         ByteBufCodecs.BOOL, ShapedEnergyTransferRecipe::isTransferMaxCharge,

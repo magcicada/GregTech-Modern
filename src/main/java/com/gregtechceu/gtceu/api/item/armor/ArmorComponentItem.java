@@ -2,9 +2,8 @@ package com.gregtechceu.gtceu.api.item.armor;
 
 import com.gregtechceu.gtceu.api.item.IComponentItem;
 import com.gregtechceu.gtceu.api.item.component.*;
+import com.gregtechceu.gtceu.common.data.GTItems;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
-import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.core.Holder;
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
@@ -12,7 +11,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
-import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -21,22 +19,16 @@ import net.minecraft.world.item.*;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
+import net.neoforged.neoforge.common.ItemAbility;
 
 import com.google.common.base.Preconditions;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.function.Consumer;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class ArmorComponentItem extends ArmorItem implements IComponentItem {
 
     @Getter
@@ -45,7 +37,8 @@ public class ArmorComponentItem extends ArmorItem implements IComponentItem {
     protected List<IItemComponent> components;
 
     public ArmorComponentItem(Holder<ArmorMaterial> material, ArmorItem.Type type, Properties properties) {
-        super(material, type, properties);
+        // Some trickery to always receive damage events without ever actually breaking the armor
+        super(material, type, properties.durability(Integer.MAX_VALUE));
         components = new ArrayList<>();
     }
 
@@ -67,8 +60,8 @@ public class ArmorComponentItem extends ArmorItem implements IComponentItem {
     public ItemAttributeModifiers getDefaultAttributeModifiers(ItemStack stack) {
         List<ItemAttributeModifiers.Entry> list = new ArrayList<>();
         IArmorLogic armorLogic = getArmorLogic();
-        list.addAll(armorLogic.getDefaultAttributeModifiers(Equipable.get(stack).getEquipmentSlot(), stack));
         list.addAll(super.getDefaultAttributeModifiers(stack).modifiers());
+        list.addAll(armorLogic.getDefaultAttributeModifiers(Equipable.get(stack).getEquipmentSlot(), stack));
         return new ItemAttributeModifiers(list, true);
     }
 
@@ -95,11 +88,6 @@ public class ArmorComponentItem extends ArmorItem implements IComponentItem {
     }
 
     @Override
-    public int getMaxDamage(ItemStack stack) {
-        return super.getMaxDamage(stack);
-    }
-
-    @Override
     public boolean isValidRepairItem(ItemStack stack, ItemStack repairCandidate) {
         return false;
     }
@@ -118,21 +106,23 @@ public class ArmorComponentItem extends ArmorItem implements IComponentItem {
         return armorLogic.getArmorDisplay(player, armor, slot);
     }
 
-    public void damageArmor(LivingEntity entity, @NotNull ItemStack stack, DamageSource source, int damage) {
-        armorLogic.damageArmor(entity, stack, source, damage);
+    @Override
+    public void setDamage(ItemStack stack, int damage) {}
+
+    @Override
+    public boolean isDamaged(ItemStack stack) {
+        return false;
     }
 
     @Override
-    public void initializeClient(Consumer<IClientItemExtensions> consumer) {
-        consumer.accept(new IClientItemExtensions() {
+    public int getMaxDamage(ItemStack stack) {
+        return Integer.MAX_VALUE;
+    }
 
-            @Override
-            public @NotNull HumanoidModel<?> getHumanoidArmorModel(LivingEntity livingEntity, ItemStack itemStack,
-                                                                   EquipmentSlot equipmentSlot,
-                                                                   HumanoidModel<?> original) {
-                return armorLogic.getArmorModel(livingEntity, itemStack, equipmentSlot, original);
-            }
-        });
+    @Override
+    public <T extends LivingEntity> int damageItem(ItemStack stack, int amount, @Nullable T entity,
+                                                   Consumer<Item> onBroken) {
+        return armorLogic.damageArmor(entity, stack, amount, this.getEquipmentSlot());
     }
 
     @Override
@@ -195,6 +185,16 @@ public class ArmorComponentItem extends ArmorItem implements IComponentItem {
             }
         }
         return super.getBarColor(stack);
+    }
+
+    @Override
+    public boolean canPerformAction(ItemStack stack, ItemAbility action) {
+        for (IItemComponent component : components) {
+            if (component instanceof IAbilityItem abilityItem && abilityItem.canPerformAction(stack, action)) {
+                return true;
+            }
+        }
+        return super.canPerformAction(stack, action);
     }
 
     @Override
@@ -304,5 +304,10 @@ public class ArmorComponentItem extends ArmorItem implements IComponentItem {
             }
         }
         return super.hasCraftingRemainingItem(stack);
+    }
+
+    @Override
+    public boolean canWalkOnPowderedSnow(ItemStack stack, LivingEntity wearer) {
+        return stack.is(GTItems.NANO_BOOTS.asItem()) || stack.is(GTItems.QUANTUM_BOOTS.asItem());
     }
 }

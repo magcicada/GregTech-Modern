@@ -6,21 +6,19 @@ import com.gregtechceu.gtceu.api.capability.IElectricItem;
 import com.gregtechceu.gtceu.api.item.armor.ArmorLogicSuite;
 import com.gregtechceu.gtceu.api.item.armor.ArmorUtils;
 import com.gregtechceu.gtceu.api.item.datacomponents.GTArmor;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
 import com.gregtechceu.gtceu.core.IFireImmuneEntity;
-import com.gregtechceu.gtceu.data.item.GTItems;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
-import com.gregtechceu.gtceu.utils.input.KeyBind;
-
-import com.lowdragmc.lowdraglib.Platform;
+import com.gregtechceu.gtceu.utils.input.SyncedKeyMappings;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
-import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -39,17 +37,21 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
 
+import it.unimi.dsi.fastutil.objects.Reference2IntMap;
+import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.IdentityHashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
 public class QuarkTechSuite extends ArmorLogicSuite implements IStepAssist {
 
-    protected static final Map<Holder<MobEffect>, Integer> potionRemovalCost = new IdentityHashMap<>();
+    public static final Reference2IntMap<Holder<MobEffect>> potionRemovalCost = new Reference2IntOpenHashMap<>();
     private float charge = 0.0F;
+    private static final byte RUNNING_TIMER = 10; // .5 seconds
+    private static final byte JUMPING_TIMER = 10; // .5 seconds
+    private static final double LEGGING_ACCEL = 0.085D;
 
     @OnlyIn(Dist.CLIENT)
     protected ArmorUtils.ModularHUD HUD;
@@ -58,194 +60,223 @@ public class QuarkTechSuite extends ArmorLogicSuite implements IStepAssist {
         super(energyPerUse, capacity, tier, slot);
         potionRemovalCost.put(MobEffects.POISON, 10000);
         potionRemovalCost.put(MobEffects.WITHER, 25000);
-        if (Platform.isClient() && this.shouldDrawHUD()) {
+        potionRemovalCost.put(MobEffects.CONFUSION, 8000);
+        potionRemovalCost.put(MobEffects.DIG_SLOWDOWN, 12500);
+        // potionRemovalCost.put(MobEffects.BAD_OMEN, 30000);
+        potionRemovalCost.put(MobEffects.MOVEMENT_SLOWDOWN, 9000);
+        potionRemovalCost.put(MobEffects.UNLUCK, 5000);
+        if (GTCEu.isClientSide() && this.shouldDrawHUD()) {
             HUD = new ArmorUtils.ModularHUD();
         }
     }
 
     @Override
-    public void onArmorTick(Level world, Player player, ItemStack itemStack) {
-        IElectricItem item = GTCapabilityHelper.getElectricItem(itemStack);
+    public void onArmorTick(Level level, Player player, ItemStack stack) {
+        IElectricItem item = GTCapabilityHelper.getElectricItem(stack);
         if (item == null)
             return;
 
-        GTArmor data = itemStack.getOrDefault(GTDataComponents.ARMOR_DATA, new GTArmor());
+        GTArmor.Mutable data = stack.getOrDefault(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY).toMutable();
         byte toggleTimer = data.toggleTimer();
+        int nightVisionTimer = data.nightVisionTimer();
+        byte runningTimer = data.runningTimer();
+        byte boostedJumpTimer = data.boostedJumpTimer();
 
-        if (!player.getItemBySlot(EquipmentSlot.HEAD).is(GTItems.QUANTUM_HELMET.get())) {
-            disableNightVision(world, player, false);
-        } else if (!player.getItemBySlot(EquipmentSlot.CHEST).is(GTItems.QUANTUM_CHESTPLATE.get()) &&
+        if (!player.getItemBySlot(EquipmentSlot.CHEST).is(GTItems.QUANTUM_CHESTPLATE.get()) &&
                 !player.getItemBySlot(EquipmentSlot.CHEST).is(GTItems.QUANTUM_CHESTPLATE_ADVANCED.get())) {
-                    if (!world.isClientSide) ((IFireImmuneEntity) player).gtceu$setFireImmune(false);
-                }
+            if (!level.isClientSide) ((IFireImmuneEntity) player).gtceu$setFireImmune(false);
+        }
 
         boolean ret = false;
         if (type == ArmorItem.Type.HELMET) {
-            int air = player.getAirSupply();
-            if (item.canUse(energyPerUse / 100) && air < 100) {
-                player.setAirSupply(air + 200);
-                item.discharge(energyPerUse / 100, item.getTier(), true, false, false);
-                ret = true;
+
+            if (!level.isClientSide) {
+                ret = supplyAir(item, player) || supplyFood(item, player);
+                removeNegativeEffects(item, player);
             }
 
-            if (item.canUse(energyPerUse / 10) && player.getFoodData().needsFood()) {
-                int slotId = -1;
-                IItemHandler playerInv = player.getCapability(Capabilities.ItemHandler.ENTITY);
-                if (playerInv instanceof IItemHandlerModifiable items) {
-                    for (int i = 0; i < items.getSlots(); i++) {
-                        ItemStack current = items.getStackInSlot(i);
-                        if (current.getFoodProperties(player) != null) {
-                            slotId = i;
-                            break;
-                        }
-                    }
-
-                    if (slotId > -1) {
-                        ItemStack stack = items.getStackInSlot(slotId);
-                        InteractionResultHolder<ItemStack> result = ArmorUtils.eat(player, stack);
-                        stack = result.getObject();
-                        if (stack.isEmpty())
-                            items.setStackInSlot(slotId, ItemStack.EMPTY);
-
-                        if (result.getResult() == InteractionResult.SUCCESS)
-                            item.discharge(energyPerUse / 10, item.getTier(), true, false, false);
-
-                        ret = true;
-                    }
-
-                }
-            }
-
-            for (MobEffectInstance effect : new LinkedList<>(player.getActiveEffects())) {
-                Holder<MobEffect> potion = effect.getEffect();
-                Integer cost = potionRemovalCost.get(potion);
-                if (cost != null) {
-                    cost = cost * (effect.getAmplifier() + 1);
-                    if (item.canUse(cost)) {
-                        item.discharge(cost, item.getTier(), true, false, false);
-                        player.removeEffect(potion);
-                    }
-                }
-            }
-
-            boolean nightvision = data.nightVision();
-            if (toggleTimer == 0 && KeyBind.ARMOR_MODE_SWITCH.isKeyDown(player)) {
+            boolean nightVision = data.nightVision();
+            if (toggleTimer == 0 && SyncedKeyMappings.ARMOR_MODE_SWITCH.isKeyDown(player)) {
+                nightVision = !nightVision;
                 toggleTimer = 5;
-                if (!nightvision && item.getCharge() >= 4) {
-                    nightvision = true;
-                    if (!world.isClientSide)
-                        player.displayClientMessage(Component.translatable("metaarmor.qts.nightvision.enabled"),
-                                true);
-                } else if (nightvision) {
-                    nightvision = false;
-                    disableNightVision(world, player, true);
+                if (item.getCharge() < ArmorUtils.MIN_NIGHTVISION_CHARGE) {
+                    nightVision = false;
+                    player.displayClientMessage(Component.translatable("metaarmor.qts.nightvision.error"), true);
                 } else {
-                    if (!world.isClientSide) {
-                        player.displayClientMessage(Component.translatable("metaarmor.qts.nightvision.error"), true);
-                    }
-                }
-
-                if (!world.isClientSide) {
-                    final boolean finalNightvision = nightvision;
-                    itemStack.update(GTDataComponents.ARMOR_DATA, new GTArmor(),
-                            data1 -> data1.setNightVision(finalNightvision));
+                    player.displayClientMessage(Component
+                            .translatable("metaarmor.qts.nightvision." + (nightVision ? "enabled" : "disabled")), true);
                 }
             }
 
-            if (nightvision && !world.isClientSide && item.getCharge() >= energyPerUse) {
+            if (nightVision) {
                 player.removeEffect(MobEffects.BLINDNESS);
-                player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, 999999, 0, true, false));
-                item.discharge(4, this.tier, true, false, false);
+                float tickRate = level.tickRateManager().tickrate();
+                if (nightVisionTimer <= ArmorUtils.NIGHT_VISION_RESET * tickRate) {
+                    nightVisionTimer = Mth.floor(ArmorUtils.NIGHTVISION_DURATION * tickRate);
+                    player.addEffect(
+                            new MobEffectInstance(MobEffects.NIGHT_VISION, nightVisionTimer, 0, true,
+                                    false));
+                    item.discharge((4), this.tier, true, false, false);
+                }
+            } else {
+                player.removeEffect(MobEffects.NIGHT_VISION);
             }
+            data.nightVision(nightVision);
 
-            if (!world.isClientSide && toggleTimer > 0) {
-                --toggleTimer;
-                final byte finalToggleTimer = toggleTimer;
-                itemStack.update(GTDataComponents.ARMOR_DATA, new GTArmor(),
-                        data1 -> data1.setToggleTimer(finalToggleTimer));
-            }
+            if (nightVisionTimer > 0) nightVisionTimer--;
+            if (toggleTimer > 0) toggleTimer--;
+
+            data.nightVisionTimer(nightVisionTimer);
+            data.toggleTimer(toggleTimer);
         } else if (type == ArmorItem.Type.CHESTPLATE && !player.fireImmune()) {
             ((IFireImmuneEntity) player).gtceu$setFireImmune(true);
-            if (player.isOnFire())
-                player.extinguishFire();
+            if (player.isOnFire()) player.extinguishFire();
         } else if (type == ArmorItem.Type.LEGGINGS) {
-            if (item.canUse(energyPerUse / 100) && (player.onGround() || player.isInWater()) &&
-                    KeyBind.VANILLA_FORWARD.isKeyDown(player) && player.isSprinting()) {
-                byte consumerTicks = data.consumerTicks();
-                ++consumerTicks;
-                if (consumerTicks >= 10) {
-                    consumerTicks = 0;
+            boolean canUseEnergy = item.canUse(energyPerUse / 100);
+            boolean sprinting = SyncedKeyMappings.VANILLA_FORWARD.isKeyDown(player) && player.isSprinting();
+            boolean jumping = SyncedKeyMappings.VANILLA_JUMP.isKeyDown(player);
+            boolean sneaking = SyncedKeyMappings.VANILLA_SNEAK.isKeyDown(player);
+
+            if (canUseEnergy && sprinting) {
+                if (runningTimer == 0) {
+                    runningTimer = RUNNING_TIMER;
                     item.discharge(energyPerUse / 100, item.getTier(), true, false, false);
-                    ret = true;
                 }
-                final byte finalConsumerTicks = consumerTicks;
-                itemStack.update(GTDataComponents.ARMOR_DATA, new GTArmor(),
-                        data1 -> data1.setConsumerTicks(finalConsumerTicks));
+            }
+            if (canUseEnergy && (player.onGround() || player.isInWater()) && sprinting) {
                 float speed = 0.25F;
                 if (player.isInWater()) {
                     speed = 0.1F;
-                    if (KeyBind.VANILLA_JUMP.isKeyDown(player)) {
+                    if (jumping) {
                         player.push(0.0, 0.1, 0.0);
                         player.hurtMarked = true;
                     }
                 }
                 player.moveRelative(speed, new Vec3(0, 0, 1));
-            } else if (item.canUse(energyPerUse / 100) && player.isInWater() &&
-                    (KeyBind.VANILLA_SNEAK.isKeyDown(player) || KeyBind.VANILLA_JUMP.isKeyDown(player))) {
-                        byte consumerTicks = data.consumerTicks();
-                        ++consumerTicks;
-                        if (consumerTicks >= 10) {
-                            consumerTicks = 0;
-                            item.discharge(energyPerUse / 100, item.getTier(), true, false, false);
-                            ret = true;
-                        }
-                        final byte finalConsumerTicks = consumerTicks;
-                        itemStack.update(GTDataComponents.ARMOR_DATA, new GTArmor(),
-                                data1 -> data1.setConsumerTicks(finalConsumerTicks));
-                        double acceleration = 0.085D;
-                        if (KeyBind.VANILLA_SNEAK.isKeyDown(player))
-                            player.push(0.0, -acceleration, 0.0);
-                        if (KeyBind.VANILLA_JUMP.isKeyDown(player))
-                            player.push(0.0, acceleration, 0.0);
-                    }
+            } else if (canUseEnergy && player.isInWater() && (sneaking || jumping)) {
+                if (sneaking)
+                    player.push(0.0, -LEGGING_ACCEL, 0.0);
+                if (jumping)
+                    player.push(0.0, LEGGING_ACCEL, 0.0);
+            }
+
+            if (runningTimer > 0) runningTimer--;
+            data.runningTimer(runningTimer);
         } else if (type == ArmorItem.Type.BOOTS) {
-            if (!world.isClientSide) {
-                if (!player.onGround() && KeyBind.VANILLA_JUMP.isKeyDown(player)) {
-                    item.discharge(energyPerUse / 100, item.getTier(), true, false, false);
-                    ret = true;
-                }
-            } else {
-                if (item.canUse(energyPerUse / 100) && player.onGround()) {
-                    this.charge = 1.0F;
-                }
+            boolean canUseEnergy = item.canUse(energyPerUse / 100);
+            boolean jumping = SyncedKeyMappings.VANILLA_JUMP.isKeyDown(player);
+            boolean boostedJump = data.boostedJump();
+            if (boostedJumpTimer == 0 && SyncedKeyMappings.BOOTS_ENABLE.isKeyDown(player)) {
+                boostedJump = !boostedJump;
+                boostedJumpTimer = JUMPING_TIMER;
+                player.displayClientMessage(Component
+                        .translatable("metaarmor.qts.boosted_jump." + (boostedJump ? "enabled" : "disabled")), true);
+            }
+            if (boostedJump) {
+                if (!level.isClientSide) {
+                    boolean onGround = data.onGround();
+                    if (onGround && !player.onGround() && jumping) {
+                        item.discharge(energyPerUse / 100, item.getTier(), true, false, false);
+                        ret = true;
+                    }
 
-                Vec3 delta = player.getDeltaMovement();
-                if (delta.y >= 0.0D && this.charge > 0.0F && !player.isInWater()) {
-                    if (KeyBind.VANILLA_JUMP.isKeyDown(player)) {
-                        if (this.charge == 1.0F) {
-                            player.setDeltaMovement(delta.x * 3.6D, delta.y, delta.z * 3.6D);
+                    if (player.onGround() != onGround) {
+                        data.onGround(player.onGround());
+                    }
+                } else {
+                    if (canUseEnergy && player.onGround()) {
+                        this.charge = 1.0F;
+                    }
+
+                    Vec3 delta = player.getDeltaMovement();
+                    if (delta.y >= 0.0D && this.charge > 0.0F && !player.isInWater()) {
+                        if (jumping) {
+                            if (this.charge == 1.0F) {
+                                player.setDeltaMovement(delta.x * 3.6D, delta.y, delta.z * 3.6D);
+                            }
+                            // gives an arc path for movement force
+                            player.addDeltaMovement(new Vec3(0.0, this.charge * 0.32, 0.0));
+                            this.charge = (float) (this.charge * 0.7D);
+                        } else if (this.charge < 1.0F) {
+                            this.charge = 0.0F;
                         }
-
-                        player.addDeltaMovement(new Vec3(0.0, this.charge * 0.32, 0.0));
-                        this.charge = (float) (this.charge * 0.7D);
-                    } else if (this.charge < 1.0F) {
-                        this.charge = 0.0F;
                     }
                 }
             }
-            updateStepHeight(player);
+
+            if (data.boostedJumpTimer() == 0 && SyncedKeyMappings.STEP_ASSIST_ENABLE.isKeyDown(player)) {
+                data.stepAssist(!data.stepAssist());
+                data.boostedJumpTimer((byte) 5);
+                if (level.isClientSide()) player.displayClientMessage(Component
+                        .translatable("metaarmor.qts.step_assist." + (data.stepAssist() ? "enabled" : "disabled")),
+                        true);
+            }
+
+            data.boostedJump(boostedJump);
+
+            if (boostedJumpTimer > 0) boostedJumpTimer--;
+
+            data.boostedJumpTimer(boostedJumpTimer);
         }
+
+        stack.set(GTDataComponents.ARMOR_DATA, data.toImmutable());
 
         if (ret) {
             player.inventoryMenu.sendAllDataToRemote();
         }
     }
 
-    public static void disableNightVision(@NotNull Level world, Player player, boolean sendMsg) {
-        if (!world.isClientSide) {
-            player.removeEffect(MobEffects.NIGHT_VISION);
-            if (sendMsg)
-                player.displayClientMessage(Component.translatable("metaarmor.qts.nightvision.disabled"), true);
+    public boolean supplyAir(@NotNull IElectricItem item, Player player) {
+        int air = player.getAirSupply();
+        if (item.canUse(energyPerUse / 100) && air < 100) {
+            player.setAirSupply(air + 200);
+            item.discharge(energyPerUse / 100, item.getTier(), true, false, false);
+            return true;
+        }
+        return false;
+    }
+
+    public boolean supplyFood(@NotNull IElectricItem item, Player player) {
+        if (item.canUse(energyPerUse / 10) && player.getFoodData().needsFood()) {
+            int slotId = -1;
+            IItemHandler playerInv = player.getCapability(Capabilities.ItemHandler.ENTITY);
+            if (playerInv instanceof IItemHandlerModifiable items) {
+                for (int i = 0; i < items.getSlots(); i++) {
+                    ItemStack current = items.getStackInSlot(i);
+                    if (current.getFoodProperties(player) != null) {
+                        slotId = i;
+                        break;
+                    }
+                }
+
+                if (slotId > -1) {
+                    ItemStack stack = items.getStackInSlot(slotId);
+                    InteractionResultHolder<ItemStack> result = ArmorUtils.eat(player, stack);
+                    stack = result.getObject();
+                    if (stack.isEmpty())
+                        items.setStackInSlot(slotId, ItemStack.EMPTY);
+
+                    if (result.getResult() == InteractionResult.SUCCESS)
+                        item.discharge(energyPerUse / 10, item.getTier(), true, false, false);
+
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public static void removeNegativeEffects(@NotNull IElectricItem item, Player player) {
+        for (MobEffectInstance effect : new LinkedList<>(player.getActiveEffects())) {
+            Holder<MobEffect> potion = effect.getEffect();
+            int cost = potionRemovalCost.getOrDefault(potion, -1);
+            if (cost != -1) {
+                cost = cost * (effect.getAmplifier() + 1);
+                if (item.canUse(cost)) {
+                    item.discharge(cost, item.getTier(), true, false, false);
+                    player.removeEffect(potion);
+                }
+            }
         }
     }
 
@@ -283,12 +314,13 @@ public class QuarkTechSuite extends ArmorLogicSuite implements IStepAssist {
      */
 
     @Override
-    public void damageArmor(LivingEntity entity, ItemStack itemStack, DamageSource source, int damage) {
+    public int damageArmor(@Nullable LivingEntity entity, ItemStack itemStack,
+                           int damage, EquipmentSlot equipmentSlot) {
         IElectricItem item = GTCapabilityHelper.getElectricItem(itemStack);
-        if (item == null) {
-            return;
+        if (item != null) {
+            item.discharge(energyPerUse / 100L * damage, item.getTier(), true, false, false);
         }
-        item.discharge(energyPerUse / 100L * damage, item.getTier(), true, false, false);
+        return super.damageArmor(entity, itemStack, damage, equipmentSlot);
     }
 
     @Override
@@ -325,7 +357,7 @@ public class QuarkTechSuite extends ArmorLogicSuite implements IStepAssist {
     public void addInfo(ItemStack itemStack, List<Component> lines) {
         super.addInfo(itemStack, lines);
         if (type == ArmorItem.Type.HELMET) {
-            GTArmor data = itemStack.getOrDefault(GTDataComponents.ARMOR_DATA, new GTArmor());
+            GTArmor data = itemStack.getOrDefault(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY);
             boolean nv = data.nightVision();
             if (nv) {
                 lines.add(Component.translatable("metaarmor.message.nightvision.enabled"));
@@ -337,10 +369,14 @@ public class QuarkTechSuite extends ArmorLogicSuite implements IStepAssist {
             lines.add(Component.translatable("metaarmor.tooltip.autoeat"));
         } else if (type == ArmorItem.Type.CHESTPLATE) {
             lines.add(Component.translatable("metaarmor.tooltip.burning"));
+            lines.add(Component.translatable("metaarmor.tooltip.freezing"));
         } else if (type == ArmorItem.Type.LEGGINGS) {
             lines.add(Component.translatable("metaarmor.tooltip.speed"));
         } else if (type == ArmorItem.Type.BOOTS) {
-            lines.add(Component.translatable("metaarmor.tooltip.stepassist"));
+            GTArmor data = itemStack.getOrDefault(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY);
+            if (data.stepAssist())
+                lines.add(Component.translatable("metaarmor.message.step_assist.enabled"));
+            else lines.add(Component.translatable("metaarmor.message.step_assist.disabled"));
             lines.add(Component.translatable("metaarmor.tooltip.falldamage"));
             lines.add(Component.translatable("metaarmor.tooltip.jump"));
         }

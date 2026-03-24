@@ -22,11 +22,6 @@ public class SerializerInteger implements IContentSerializer<Integer> {
     }
 
     @Override
-    public Codec<Integer> codec() {
-        return Codec.INT;
-    }
-
-    @Override
     public Integer of(Object o) {
         if (o instanceof Integer) {
             return (Integer) o;
@@ -41,5 +36,15 @@ public class SerializerInteger implements IContentSerializer<Integer> {
     @Override
     public Integer defaultValue() {
         return 0;
+    }
+
+    @Override
+    public Class<Integer> contentClass() {
+        return Integer.class;
+    }
+
+    @Override
+    public Codec<Integer> codec() {
+        return Codec.INT;
     }
 }

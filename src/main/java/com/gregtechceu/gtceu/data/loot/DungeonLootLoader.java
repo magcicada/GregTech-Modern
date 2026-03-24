@@ -1,11 +1,11 @@
 package com.gregtechceu.gtceu.data.loot;
 
 import com.gregtechceu.gtceu.GTCEu;
-import com.gregtechceu.gtceu.api.material.ChemicalHelper;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
+import com.gregtechceu.gtceu.api.data.chemical.ChemicalHelper;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.data.GTMaterials;
 import com.gregtechceu.gtceu.config.ConfigHolder;
-import com.gregtechceu.gtceu.data.item.GTItems;
-import com.gregtechceu.gtceu.data.material.GTMaterials;
 
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -18,7 +18,6 @@ public class DungeonLootLoader {
     public static void init() {
         if (ConfigHolder.INSTANCE.worldgen.addLoot || ConfigHolder.INSTANCE.worldgen.increaseDungeonLoot) {
             GTCEu.LOGGER.info("Registering dungeon loot...");
-            ChestGenHooks.init();
         }
         if (ConfigHolder.INSTANCE.worldgen.addLoot) {
             ChestGenHooks.addItem(BuiltInLootTables.SPAWN_BONUS_CHEST, GTItems.BOTTLE_PURPLE_DRINK.asStack(), 8, 16, 2);
@@ -72,7 +71,6 @@ public class DungeonLootLoader {
             ChestGenHooks.addItem(BuiltInLootTables.DESERT_PYRAMID,
                     ChemicalHelper.get(TagPrefix.gem, GTMaterials.GarnetYellow), 2, 8, 4);
 
-            ChestGenHooks.addItem(BuiltInLootTables.JUNGLE_TEMPLE, GTItems.COIN_GOLD_ANCIENT.asStack(), 16, 64, 10);
             ChestGenHooks.addItem(BuiltInLootTables.JUNGLE_TEMPLE,
                     GTItems.ZERO_POINT_MODULE.get().getChargedStack(Long.MAX_VALUE), 1, 1, 1);
             ChestGenHooks.addItem(BuiltInLootTables.JUNGLE_TEMPLE,

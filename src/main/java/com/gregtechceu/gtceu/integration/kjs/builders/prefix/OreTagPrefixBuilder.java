@@ -1,9 +1,11 @@
 package com.gregtechceu.gtceu.integration.kjs.builders.prefix;
 
-import com.gregtechceu.gtceu.api.material.material.Material;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
-import com.gregtechceu.gtceu.data.block.GTBlocks;
-import com.gregtechceu.gtceu.integration.kjs.built.KJSTagPrefix;
+import com.gregtechceu.gtceu.api.block.OreBlock;
+import com.gregtechceu.gtceu.api.data.chemical.material.Material;
+import com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialIconType;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
+import com.gregtechceu.gtceu.common.data.GTBlocks;
+import com.gregtechceu.gtceu.integration.kjs.helpers.GTResourceLocation;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -14,6 +16,7 @@ import lombok.experimental.Accessors;
 
 import java.util.function.Supplier;
 
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.Conditions.hasOreProperty;
 import static com.gregtechceu.gtceu.integration.kjs.Validator.*;
 
 @Accessors(fluent = true, chain = true)
@@ -34,17 +37,24 @@ public class OreTagPrefixBuilder extends TagPrefixBuilder {
     @Setter
     public transient boolean shouldDropAsItem = false;
 
-    public OreTagPrefixBuilder(ResourceLocation id, Object... args) {
-        super(id, args);
+    public OreTagPrefixBuilder(ResourceLocation id) {
+        super(GTResourceLocation.implicitAsGtceu(id));
     }
 
     @Override
-    public KJSTagPrefix create(String id) {
-        return KJSTagPrefix.oreTagPrefix(id);
+    public TagPrefix create(String id) {
+        return new TagPrefix(id)
+                .defaultTagPath("ores/%s")
+                .prefixOnlyTagPath("ores_in_ground/%s")
+                .unformattedTagPath("ores")
+                .materialIconType(MaterialIconType.ore)
+                .unificationEnabled(true)
+                .blockConstructor(OreBlock::new)
+                .generationCondition(hasOreProperty);
     }
 
     @Override
-    public TagPrefix register() {
+    public TagPrefix createObject() {
         validate(this.id,
                 errorIfNull(stateSupplier, "stateSupplier"),
                 onlySetDefault(templateProperties, () -> {
@@ -53,7 +63,7 @@ public class OreTagPrefixBuilder extends TagPrefixBuilder {
                 }),
                 errorIfNull(baseModelLocation, "baseModelLocation"));
 
-        return value = base.registerOre(stateSupplier, materialSupplier, templateProperties, baseModelLocation,
+        return base.registerOre(stateSupplier, materialSupplier, templateProperties, baseModelLocation,
                 doubleDrops, isSand, shouldDropAsItem);
     }
 }

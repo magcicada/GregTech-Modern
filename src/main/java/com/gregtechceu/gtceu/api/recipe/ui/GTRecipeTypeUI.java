@@ -1,5 +1,6 @@
 package com.gregtechceu.gtceu.api.recipe.ui;
 
+import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.capability.recipe.FluidRecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
@@ -9,22 +10,27 @@ import com.gregtechceu.gtceu.api.gui.SteamTexture;
 import com.gregtechceu.gtceu.api.gui.WidgetUtils;
 import com.gregtechceu.gtceu.api.gui.editor.IEditableUI;
 import com.gregtechceu.gtceu.api.gui.widget.DualProgressWidget;
+import com.gregtechceu.gtceu.api.gui.widget.SlotWidget;
+import com.gregtechceu.gtceu.api.gui.widget.TankWidget;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
-import com.gregtechceu.gtceu.api.recipe.condition.RecipeCondition;
-import com.gregtechceu.gtceu.integration.emi.recipe.GTRecipeTypeEmiCategory;
-import com.gregtechceu.gtceu.integration.jei.recipe.GTRecipeTypeCategory;
-import com.gregtechceu.gtceu.integration.rei.recipe.GTRecipeTypeDisplayCategory;
+import com.gregtechceu.gtceu.api.recipe.RecipeCondition;
+import com.gregtechceu.gtceu.api.recipe.category.GTRecipeCategory;
+import com.gregtechceu.gtceu.api.registry.GTRegistries;
+import com.gregtechceu.gtceu.integration.emi.recipe.GTRecipeEMICategory;
+import com.gregtechceu.gtceu.integration.jei.recipe.GTRecipeJEICategory;
+import com.gregtechceu.gtceu.integration.rei.recipe.GTRecipeREICategory;
 
-import com.lowdragmc.lowdraglib.LDLib;
-import com.lowdragmc.lowdraglib.Platform;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurableWidget;
 import com.lowdragmc.lowdraglib.gui.editor.data.Resources;
 import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.texture.ProgressTexture;
 import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
-import com.lowdragmc.lowdraglib.gui.widget.*;
+import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
+import com.lowdragmc.lowdraglib.gui.widget.ProgressWidget;
+import com.lowdragmc.lowdraglib.gui.widget.Widget;
+import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.jei.JEIPlugin;
 import com.lowdragmc.lowdraglib.utils.Position;
 import com.lowdragmc.lowdraglib.utils.Size;
@@ -40,6 +46,8 @@ import com.google.common.collect.Table;
 import dev.emi.emi.api.EmiApi;
 import it.unimi.dsi.fastutil.bytes.Byte2ObjectArrayMap;
 import it.unimi.dsi.fastutil.bytes.Byte2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Object2IntAVLTreeMap;
+import it.unimi.dsi.fastutil.objects.Object2IntSortedMap;
 import lombok.Getter;
 import lombok.Setter;
 import me.shedaniel.rei.api.client.view.ViewSearchBuilder;
@@ -50,9 +58,9 @@ import java.io.DataInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TreeMap;
 import java.util.function.BiConsumer;
 import java.util.function.DoubleSupplier;
+import java.util.stream.Collectors;
 
 @SuppressWarnings("UnusedReturnValue")
 public class GTRecipeTypeUI {
@@ -79,12 +87,8 @@ public class GTRecipeTypeUI {
     @Getter
     protected int maxTooltips = 3;
 
-    @Getter
-    @Setter
-    private boolean JEIVisible = true;
-
     private CompoundTag customUICache;
-    private Size jeiSize;
+    private Size xeiSize;
     @Getter
     private int originalWidth;
 
@@ -98,10 +102,10 @@ public class GTRecipeTypeUI {
     public CompoundTag getCustomUI() {
         if (this.customUICache == null) {
             ResourceManager resourceManager = null;
-            if (LDLib.isClient()) {
+            if (GTCEu.isClientSide()) {
                 resourceManager = Minecraft.getInstance().getResourceManager();
-            } else if (Platform.getMinecraftServer() != null) {
-                resourceManager = Platform.getMinecraftServer().getResourceManager();
+            } else if (GTCEu.getMinecraftServer() != null) {
+                resourceManager = GTCEu.getMinecraftServer().getResourceManager();
             }
             if (resourceManager == null) {
                 this.customUICache = new CompoundTag();
@@ -133,15 +137,15 @@ public class GTRecipeTypeUI {
 
     public void reloadCustomUI() {
         this.customUICache = null;
-        this.jeiSize = null;
+        this.xeiSize = null;
     }
 
     public Size getJEISize() {
-        Size size = this.jeiSize;
+        Size size = this.xeiSize;
         if (size == null) {
             var originalSize = createEditableUITemplate(false, false).createDefault().getSize();
             this.originalWidth = originalSize.width;
-            this.jeiSize = size = new Size(Math.max(originalWidth, 150),
+            this.xeiSize = size = new Size(Math.max(originalWidth, 150),
                     getPropertyHeightShift() + 5 + originalSize.height);
         }
         return size;
@@ -150,7 +154,7 @@ public class GTRecipeTypeUI {
     public record RecipeHolder(DoubleSupplier progressSupplier,
                                Table<IO, RecipeCapability<?>, Object> storages,
                                CompoundTag data,
-                               List<RecipeCondition> conditions,
+                               List<RecipeCondition<?>> conditions,
                                boolean isSteam,
                                boolean isHighPressure) {}
 
@@ -162,7 +166,7 @@ public class GTRecipeTypeUI {
     public WidgetGroup createUITemplate(DoubleSupplier progressSupplier,
                                         Table<IO, RecipeCapability<?>, Object> storages,
                                         CompoundTag data,
-                                        List<RecipeCondition> conditions,
+                                        List<RecipeCondition<?>> conditions,
                                         boolean isSteam,
                                         boolean isHighPressure) {
         var template = createEditableUITemplate(isSteam, isHighPressure);
@@ -175,7 +179,7 @@ public class GTRecipeTypeUI {
     public WidgetGroup createUITemplate(DoubleSupplier progressSupplier,
                                         Table<IO, RecipeCapability<?>, Object> storages,
                                         CompoundTag data,
-                                        List<RecipeCondition> conditions) {
+                                        List<RecipeCondition<?>> conditions) {
         return createUITemplate(progressSupplier, storages, data, conditions, false, false);
     }
 
@@ -190,7 +194,8 @@ public class GTRecipeTypeUI {
                 CompoundTag nbt = getCustomUI();
                 WidgetGroup group = new WidgetGroup();
                 IConfigurableWidget.deserializeNBT(group, nbt.getCompound("root"),
-                        Resources.fromNBT(nbt.getCompound("resources")), false, Platform.getFrozenRegistry());
+                        Resources.fromNBT(nbt.getCompound("resources")), false,
+                        GTRegistries.builtinRegistry());
                 group.setSelfPosition(new Position(0, 0));
                 return group;
             }
@@ -237,21 +242,27 @@ public class GTRecipeTypeUI {
                 progress.add(dualProgressWidget);
             });
             // add recipe button
-            if (!isJEI && (LDLib.isReiLoaded() || LDLib.isJeiLoaded() || LDLib.isEmiLoaded())) {
+            if (!isJEI && GTCEu.Mods.isAnyRecipeViewerLoaded()) {
                 for (Widget widget : progress) {
                     template.addWidget(new ButtonWidget(widget.getPosition().x, widget.getPosition().y,
                             widget.getSize().width, widget.getSize().height, IGuiTexture.EMPTY, cd -> {
                                 if (cd.isRemote) {
-                                    if (LDLib.isReiLoaded()) {
-                                        ViewSearchBuilder.builder()
-                                                .addCategory(GTRecipeTypeDisplayCategory.CATEGORIES.apply(recipeType))
-                                                .open();
-                                    } else if (LDLib.isJeiLoaded()) {
-                                        JEIPlugin.jeiRuntime.getRecipesGui()
-                                                .showTypes(List.of(GTRecipeTypeCategory.TYPES.apply(recipeType)));
-                                    } else if (LDLib.isEmiLoaded()) {
+                                    if (GTCEu.Mods.isEMILoaded()) {
                                         EmiApi.displayRecipeCategory(
-                                                GTRecipeTypeEmiCategory.CATEGORIES.apply(recipeType));
+                                                GTRecipeEMICategory.machineCategory(recipeType.getCategory()));
+                                    } else if (GTCEu.Mods.isREILoaded()) {
+                                        ViewSearchBuilder.builder().addCategories(
+                                                recipeType.getCategories().stream()
+                                                        .filter(GTRecipeCategory::isXEIVisible)
+                                                        .map(GTRecipeREICategory::machineCategory)
+                                                        .collect(Collectors.toList()))
+                                                .open();
+                                    } else if (GTCEu.Mods.isJEILoaded()) {
+                                        JEIPlugin.jeiRuntime.getRecipesGui().showTypes(
+                                                recipeType.getCategories().stream()
+                                                        .filter(GTRecipeCategory::isXEIVisible)
+                                                        .map(GTRecipeJEICategory::machineType)
+                                                        .collect(Collectors.toList()));
                                     }
                                 }
                             }).setHoverTooltips("gtceu.recipe_type.show_recipes"));
@@ -265,13 +276,13 @@ public class GTRecipeTypeUI {
                     RecipeCapability<?> cap = storagesEntry.getKey();
                     Object storage = storagesEntry.getValue();
                     // bind overlays
-                    Class<? extends Widget> widgetClass = cap.getWidgetClass();
+                    var widgetClass = cap.getWidgetClass();
                     if (widgetClass != null) {
                         WidgetUtils.widgetByIdForEach(template, "^%s_[0-9]+$".formatted(cap.slotName(io)), widgetClass,
                                 widget -> {
                                     var index = WidgetUtils.widgetIdIndex(widget);
                                     cap.applyWidgetInfo(widget, index, isJEI, io, recipeHolder, recipeType, null, null,
-                                            storage);
+                                            storage, 0, 0);
                                 });
                     }
                 }
@@ -282,11 +293,11 @@ public class GTRecipeTypeUI {
     protected WidgetGroup addInventorySlotGroup(boolean isOutputs, boolean isSteam, boolean isHighPressure) {
         int maxCount = 0;
         int totalR = 0;
-        TreeMap<RecipeCapability<?>, Integer> map = new TreeMap<>(RecipeCapability.COMPARATOR);
+        Object2IntSortedMap<RecipeCapability<?>> map = new Object2IntAVLTreeMap<>(RecipeCapability.COMPARATOR);
         if (isOutputs) {
-            for (var value : recipeType.maxOutputs.entrySet()) {
+            for (var value : recipeType.maxOutputs.object2IntEntrySet()) {
                 if (value.getKey().doRenderSlot) {
-                    int val = value.getValue();
+                    int val = value.getIntValue();
                     if (val > maxCount) {
                         maxCount = Math.min(val, 3);
                     }
@@ -295,9 +306,9 @@ public class GTRecipeTypeUI {
                 }
             }
         } else {
-            for (var value : recipeType.maxInputs.entrySet()) {
+            for (var value : recipeType.maxInputs.object2IntEntrySet()) {
                 if (value.getKey().doRenderSlot) {
-                    int val = value.getValue();
+                    int val = value.getIntValue();
                     if (val > maxCount) {
                         maxCount = Math.min(val, 3);
                     }
@@ -308,14 +319,16 @@ public class GTRecipeTypeUI {
         }
         WidgetGroup group = new WidgetGroup(0, 0, maxCount * 18 + 8, totalR * 18 + 8);
         int index = 0;
-        for (var entry : map.entrySet()) {
+        for (var entry : map.object2IntEntrySet()) {
             RecipeCapability<?> cap = entry.getKey();
-            if (cap.getWidgetClass() == null) {
+            var widgetClass = cap.getWidgetClass();
+            if (widgetClass == null) {
                 continue;
             }
-            int capCount = entry.getValue();
+            int capCount = entry.getIntValue();
             for (int slotIndex = 0; slotIndex < capCount; slotIndex++) {
                 var slot = cap.createWidget();
+                // noinspection DataFlowIssue
                 slot.setSelfPosition(new Position((index % 3) * 18 + 4, (index / 3) * 18 + 4));
                 slot.setBackground(
                         getOverlaysForSlot(isOutputs, cap, slotIndex == capCount - 1, isSteam, isHighPressure));
@@ -395,7 +408,7 @@ public class GTRecipeTypeUI {
      * @return the height used to determine size of background texture in JEI
      */
     public int getPropertyHeightShift() {
-        int maxPropertyCount = recipeType.getMaxTooltips() + recipeType.getDataInfos().size();
+        int maxPropertyCount = maxTooltips + recipeType.getDataInfos().size() + recipeType.getMinRecipeConditions();
         return maxPropertyCount * 10; // GTRecipeWidget#LINE_HEIGHT
     }
 

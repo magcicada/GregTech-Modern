@@ -3,8 +3,8 @@ package com.gregtechceu.gtceu.common.capability;
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
 import com.gregtechceu.gtceu.api.capability.IMedicalConditionTracker;
+import com.gregtechceu.gtceu.api.data.chemical.material.properties.HazardProperty;
 import com.gregtechceu.gtceu.api.data.medicalcondition.MedicalCondition;
-import com.gregtechceu.gtceu.api.material.material.properties.HazardProperty;
 import com.gregtechceu.gtceu.common.particle.HazardParticleOptions;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.utils.BreadthFirstBlockSearch;
@@ -15,7 +15,6 @@ import net.minecraft.nbt.*;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -115,11 +114,7 @@ public class LocalizedHazardSavedData extends SavedData {
         playerStream.forEach(player -> {
             if (zone.trigger().protectionType().isProtected(player)) {
                 // entity has proper safety equipment, so damage it per material every 5 seconds.
-                if (player.level().getGameTime() % 100 == 0) {
-                    for (ArmorItem.Type type : zone.trigger().protectionType().getEquipmentTypes()) {
-                        player.getItemBySlot(type.getSlot()).hurtAndBreak(1, player, type.getSlot());
-                    }
-                }
+                zone.trigger().protectionType().damageEquipment(player, 1);
                 // don't progress this material condition if entity is protected
                 return;
             }

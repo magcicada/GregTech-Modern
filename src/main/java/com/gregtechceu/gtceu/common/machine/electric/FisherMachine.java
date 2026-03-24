@@ -1,27 +1,32 @@
 package com.gregtechceu.gtceu.common.machine.electric;
 
 import com.gregtechceu.gtceu.api.GTValues;
+import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
 import com.gregtechceu.gtceu.api.capability.IWorkable;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.gui.WidgetUtils;
 import com.gregtechceu.gtceu.api.gui.editor.EditableMachineUI;
 import com.gregtechceu.gtceu.api.gui.editor.EditableUI;
+import com.gregtechceu.gtceu.api.gui.widget.SlotWidget;
+import com.gregtechceu.gtceu.api.gui.widget.ToggleButtonWidget;
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.TieredEnergyMachine;
 import com.gregtechceu.gtceu.api.machine.feature.IAutoOutputItem;
 import com.gregtechceu.gtceu.api.machine.feature.IFancyUIMachine;
-import com.gregtechceu.gtceu.api.machine.feature.IMachineModifyDrops;
+import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
 import com.gregtechceu.gtceu.api.transfer.item.CustomItemStackHandler;
+import com.gregtechceu.gtceu.common.data.item.GTItemAbilities;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.data.lang.LangHandler;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
+import com.gregtechceu.gtceu.utils.GTTransferUtils;
 
+import com.lowdragmc.lowdraglib.gui.texture.ItemStackTexture;
 import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
-import com.lowdragmc.lowdraglib.gui.widget.*;
-import com.lowdragmc.lowdraglib.side.item.ItemTransferHelper;
+import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.syncdata.ISubscription;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
@@ -29,7 +34,6 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.RequireRerender;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 import com.lowdragmc.lowdraglib.utils.Position;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -46,7 +50,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.storage.loot.BuiltInLootTables;
 import net.minecraft.world.level.storage.loot.LootParams;
@@ -60,21 +64,16 @@ import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.Set;
 import java.util.function.BiFunction;
-
-import javax.annotation.ParametersAreNonnullByDefault;
 
 /**
  * @author h3tr
  * @date 2023/7/13
  * @implNote FisherMachine
  */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class FisherMachine extends TieredEnergyMachine
-                           implements IAutoOutputItem, IFancyUIMachine, IMachineModifyDrops, IWorkable {
+                           implements IAutoOutputItem, IFancyUIMachine, IMachineLife, IWorkable {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(FisherMachine.class,
             TieredEnergyMachine.MANAGED_FIELD_HOLDER);
@@ -99,7 +98,7 @@ public class FisherMachine extends TieredEnergyMachine
     protected final NotifiableItemStackHandler baitHandler;
 
     @Getter
-    @Persisted(subPersisted = true)
+    @Persisted
     protected final CustomItemStackHandler chargerInventory;
     @Nullable
     protected TickableSubscription autoOutputSubs, batterySubs, fishingSubs;
@@ -129,10 +128,16 @@ public class FisherMachine extends TieredEnergyMachine
     private static final ItemStack fishingRod = new ItemStack(Items.FISHING_ROD);
     private boolean hasWater = false;
 
+    @Getter
+    @Setter
+    @Persisted
+    @DescSynced
+    protected boolean junkEnabled = true;
+
     public FisherMachine(IMachineBlockEntity holder, int tier, Object... ignoredArgs) {
         super(holder, tier);
         this.inventorySize = (tier + 1) * (tier + 1);
-        this.maxProgress = 1000 - tier * 200;
+        this.maxProgress = calcMaxProgress(tier);
         this.energyPerTick = GTValues.V[tier - 1];
         this.cache = createCacheItemHandler();
         this.baitHandler = createBaitItemHandler();
@@ -145,9 +150,11 @@ public class FisherMachine extends TieredEnergyMachine
     //////////////////////////////////////
 
     protected CustomItemStackHandler createChargerItemHandler() {
-        var transfer = new CustomItemStackHandler();
-        transfer.setFilter(item -> item.get(GTDataComponents.ENERGY_CONTENT) != null);
-        return transfer;
+        var handler = new CustomItemStackHandler();
+        handler.setFilter(item -> GTCapabilityHelper.getElectricItem(item) != null ||
+                (ConfigHolder.INSTANCE.compat.energy.nativeEUToFE &&
+                        GTCapabilityHelper.getForgeEnergyItem(item) != null));
+        return handler;
     }
 
     @Override
@@ -206,10 +213,14 @@ public class FisherMachine extends TieredEnergyMachine
     }
 
     @Override
-    public void onDrops(List<ItemStack> drops, Player entity) {
-        clearInventory(drops, chargerInventory);
-        clearInventory(drops, baitHandler.storage);
-        clearInventory(drops, cache.storage);
+    public void onMachineRemoved() {
+        clearInventory(chargerInventory);
+        clearInventory(baitHandler.storage);
+        clearInventory(cache.storage);
+    }
+
+    public static int calcMaxProgress(int tier) {
+        return (int) (800.0 - 170 * ((double) tier - 1.0) + (((double) Math.max(0, tier - 4) / 0.012)));
     }
 
     //////////////////////////////////////
@@ -249,9 +260,11 @@ public class FisherMachine extends TieredEnergyMachine
 
         drainEnergy(false);
         if (progress >= maxProgress) {
-
-            LootTable lootTable = getLevel().registryAccess().registry(Registries.LOOT_TABLE).get()
-                    .get(BuiltInLootTables.FISHING);
+            var lootTableRegistry = getLevel().registryAccess().registryOrThrow(Registries.LOOT_TABLE);
+            LootTable lootTable = lootTableRegistry.get(BuiltInLootTables.FISHING);
+            if (!this.junkEnabled) {
+                lootTable = lootTableRegistry.get(BuiltInLootTables.FISHING_FISH);
+            }
 
             FishingHook simulatedHook = new FishingHook(EntityType.FISHING_BOBBER, getLevel()) {
 
@@ -274,8 +287,10 @@ public class FisherMachine extends TieredEnergyMachine
             for (ItemStack itemStack : generatedLoot)
                 useBait |= tryFillCache(itemStack);
 
-            if (useBait)
-                this.baitHandler.extractItem(0, 1, false);
+            if (useBait && junkEnabled)
+                this.baitHandler.storage.extractItem(0, 1, false);
+            else if (useBait)
+                this.baitHandler.storage.extractItem(0, 2, false);
             updateFishingUpdateSubscription();
             progress = -1;
         }
@@ -328,8 +343,7 @@ public class FisherMachine extends TieredEnergyMachine
     protected void updateAutoOutputSubscription() {
         var outputFacing = getOutputFacingItems();
         if ((isAutoOutputItems() && !cache.isEmpty()) && outputFacing != null &&
-                ItemTransferHelper.getItemTransfer(getLevel(), getPos().relative(outputFacing),
-                        outputFacing.getOpposite()) != null)
+                GTTransferUtils.hasAdjacentItemHandler(getLevel(), getPos(), outputFacing))
             autoOutputSubs = subscribeServerTick(autoOutputSubs, this::checkAutoOutput);
         else if (autoOutputSubs != null) {
             autoOutputSubs.unsubscribe();
@@ -359,7 +373,7 @@ public class FisherMachine extends TieredEnergyMachine
     }
 
     @Override
-    public void onNeighborChanged(Block block, BlockPos fromPos, boolean isMoving) {
+    public void onNeighborChanged(net.minecraft.world.level.block.Block block, BlockPos fromPos, boolean isMoving) {
         super.onNeighborChanged(block, fromPos, isMoving);
         updateAutoOutputSubscription();
     }
@@ -397,6 +411,7 @@ public class FisherMachine extends TieredEnergyMachine
                     createTemplate(inventorySize).setupUI(template, fisherMachine);
                     createEnergyBar().setupUI(template, fisherMachine);
                     createBatterySlot().setupUI(template, fisherMachine);
+                    createJunkButton().setupUI(template, fisherMachine);
                 }
             }));
 
@@ -410,6 +425,20 @@ public class FisherMachine extends TieredEnergyMachine
             slotWidget.setCanPutItems(true);
             slotWidget.setCanTakeItems(true);
             slotWidget.setHoverTooltips(LangHandler.getMultiLang("gtceu.gui.charger_slot.tooltip",
+                    GTValues.VNF[machine.getTier()], GTValues.VNF[machine.getTier()]).toArray(new MutableComponent[0]));
+        });
+    }
+
+    protected static EditableUI<ToggleButtonWidget, FisherMachine> createJunkButton() {
+        return new EditableUI<>("junk_button", ToggleButtonWidget.class, () -> {
+            var toggleButtonWidget = new ToggleButtonWidget(10, 20, 18, 18,
+                    new ItemStackTexture(Items.NAME_TAG).scale(0.9F), () -> false, b -> {});
+            toggleButtonWidget.setShouldUseBaseBackground();
+            return toggleButtonWidget;
+        }, (toggleButtonWidget, machine) -> {
+            toggleButtonWidget.setSupplier(machine::isJunkEnabled);
+            toggleButtonWidget.setOnPressCallback((data, bool) -> machine.setJunkEnabled(bool));
+            toggleButtonWidget.setHoverTooltips(LangHandler.getMultiLang("gtceu.gui.fisher_mode.tooltip",
                     GTValues.VNF[machine.getTier()], GTValues.VNF[machine.getTier()]).toArray(new MutableComponent[0]));
         });
     }
@@ -438,6 +467,10 @@ public class FisherMachine extends TieredEnergyMachine
             baitSlotWidget.setBackground(GuiTextures.SLOT, GuiTextures.STRING_SLOT_OVERLAY);
             baitSlotWidget.setId("bait_slot");
             main.addWidget(baitSlotWidget);
+            var junkButton = createJunkButton().createDefault();
+            junkButton.setSelfPosition(new Position(4, (main.getSize().height - junkButton.getSize().height) - 4));
+            junkButton.setId("junk_button");
+            main.addWidget(junkButton);
             main.setBackground(GuiTextures.BACKGROUND_INVERSE);
             return main;
         }, (group, machine) -> {
@@ -461,7 +494,8 @@ public class FisherMachine extends TieredEnergyMachine
     // ******* Rendering ********//
     //////////////////////////////////////
     @Override
-    public ResourceTexture sideTips(Player player, Set<GTToolType> toolTypes, Direction side) {
+    public ResourceTexture sideTips(Player player, BlockPos pos, BlockState state, Set<GTToolType> toolTypes,
+                                    ItemStack held, Direction side) {
         if (toolTypes.contains(GTToolType.WRENCH)) {
             if (!player.isShiftKeyDown()) {
                 if (!hasFrontFacing() || side != getFrontFacing()) {
@@ -475,21 +509,23 @@ public class FisherMachine extends TieredEnergyMachine
         } else if (toolTypes.contains(GTToolType.SOFT_MALLET)) {
             return this.isWorkingEnabled ? GuiTextures.TOOL_PAUSE : GuiTextures.TOOL_START;
         }
-        return super.sideTips(player, toolTypes, side);
+        return super.sideTips(player, pos, state, toolTypes, held, side);
     }
 
     //////////////////////////////////////
     // ******* Interactions ********//
-    //////////////////////////////////////
+    /// ///////////////////////////////////
     @Override
-    protected ItemInteractionResult onWrenchClick(Player playerIn, InteractionHand hand, Direction gridSide,
+    protected ItemInteractionResult onWrenchClick(Player playerIn, InteractionHand hand, ItemStack held,
+                                                  Direction gridSide,
                                                   BlockHitResult hitResult) {
+        if (!held.canPerformAction(GTItemAbilities.WRENCH_CONFIGURE)) {
+            return super.onWrenchClick(playerIn, hand, held, gridSide, hitResult);
+        }
         if (!playerIn.isShiftKeyDown() && !isRemote()) {
             var tool = playerIn.getItemInHand(hand);
-            if (tool.getDamageValue() >= tool.getMaxDamage())
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-            if (hasFrontFacing() && gridSide == getFrontFacing())
-                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            if (tool.getDamageValue() >= tool.getMaxDamage()) return ItemInteractionResult.FAIL;
+            if (hasFrontFacing() && gridSide == getFrontFacing()) return ItemInteractionResult.FAIL;
 
             // important not to use getters here, which have different logic
             Direction itemFacing = this.outputFacingItems;
@@ -501,10 +537,9 @@ public class FisherMachine extends TieredEnergyMachine
                 // remove the output facing when wrenching the current one to disable it
                 setOutputFacingItems(null);
             }
-
-            return ItemInteractionResult.CONSUME;
+            return ItemInteractionResult.sidedSuccess(playerIn.level().isClientSide);
         }
 
-        return super.onWrenchClick(playerIn, hand, gridSide, hitResult);
+        return super.onWrenchClick(playerIn, hand, held, gridSide, hitResult);
     }
 }

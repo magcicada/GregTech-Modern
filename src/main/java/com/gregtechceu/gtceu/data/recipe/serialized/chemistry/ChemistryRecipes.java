@@ -1,16 +1,18 @@
 package com.gregtechceu.gtceu.data.recipe.serialized.chemistry;
 
-import com.gregtechceu.gtceu.api.fluid.store.FluidStorageKeys;
+import com.gregtechceu.gtceu.api.fluids.store.FluidStorageKeys;
 
 import net.minecraft.data.recipes.RecipeOutput;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 
 import static com.gregtechceu.gtceu.api.GTValues.*;
-import static com.gregtechceu.gtceu.api.tag.TagPrefix.dust;
-import static com.gregtechceu.gtceu.api.tag.TagPrefix.ingot;
-import static com.gregtechceu.gtceu.data.material.GTMaterials.*;
-import static com.gregtechceu.gtceu.data.recipe.GTRecipeTypes.*;
+import static com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialFlags.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.dust;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.ingot;
+import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
+import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
 
 public class ChemistryRecipes {
 
@@ -31,8 +33,8 @@ public class ChemistryRecipes {
         PolymerRecipes.init(provider);
         ReactorRecipes.init(provider);
         SeparationRecipes.init(provider);
-        BrineRecipes.init(provider);
         AntidoteRecipes.init(provider);
+        TitaniumRecipes.init(provider);
 
         // A Few Random Recipes
         FLUID_HEATER_RECIPES.recipeBuilder("ethenone")
@@ -97,19 +99,19 @@ public class ChemistryRecipes {
         GAS_COLLECTOR_RECIPES.recipeBuilder("air")
                 .circuitMeta(1)
                 .outputFluids(Air.getFluid(10000))
-                .dimension(ResourceLocation.withDefaultNamespace("overworld"))
+                .dimension(Level.OVERWORLD)
                 .duration(200).EUt(16).save(provider);
 
         GAS_COLLECTOR_RECIPES.recipeBuilder("nether_air")
                 .circuitMeta(2)
                 .outputFluids(NetherAir.getFluid(10000))
-                .dimension(ResourceLocation.withDefaultNamespace("the_nether"))
+                .dimension(Level.NETHER)
                 .duration(200).EUt(64).save(provider);
 
         GAS_COLLECTOR_RECIPES.recipeBuilder("ender_air")
                 .circuitMeta(3)
                 .outputFluids(EnderAir.getFluid(10000))
-                .dimension(ResourceLocation.withDefaultNamespace("the_end"))
+                .dimension(Level.END)
                 .duration(200).EUt(256).save(provider);
 
         // CaCO3 + 2NaCl -> Na2CO3 + CaCl2
@@ -141,8 +143,17 @@ public class ChemistryRecipes {
                 .inputItems(dust, Charcoal)
                 .inputFluids(Nitrogen.getFluid(2000))
                 .outputItems(dust, ActivatedCarbon)
-                .chancedOutput(dust, Ash, 2000, 0)
                 .duration(640).EUt(64)
+                .save(provider);
+
+        // 4 kelp -> 1 iodine
+        CHEMICAL_RECIPES.recipeBuilder("iodine")
+                .inputItems(Items.DRIED_KELP_BLOCK, 3)
+                .inputFluids(Hydrogen.getFluid(2000))
+                .inputFluids(HydrogenPeroxide.getFluid(1000))
+                .outputItems(dust, Iodine, 1)
+                .outputFluids(Water.getFluid(2000))
+                .duration(200).EUt(VA[MV])
                 .save(provider);
     }
 }

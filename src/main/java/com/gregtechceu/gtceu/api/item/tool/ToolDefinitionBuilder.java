@@ -2,6 +2,7 @@ package com.gregtechceu.gtceu.api.item.tool;
 
 import com.gregtechceu.gtceu.api.item.datacomponents.AoESymmetrical;
 import com.gregtechceu.gtceu.api.item.tool.behavior.IToolBehavior;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
@@ -9,21 +10,16 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.Tool;
 import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
 import com.google.common.collect.ImmutableList;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.function.*;
 
 @SuppressWarnings("unused")
@@ -32,7 +28,7 @@ public class ToolDefinitionBuilder {
 
     private final List<IToolBehavior<?>> behaviours = new ArrayList<>();
     @Setter
-    private Tool tool;
+    private Tool tool = new Tool(Collections.emptyList(), 1.0F, 1);
     @Setter
     private int damagePerCraftingAction = 1;
     private boolean suitableForBlockBreaking = false;
@@ -50,16 +46,15 @@ public class ToolDefinitionBuilder {
     private float baseEfficiency = 4F;
     @Setter
     private float efficiencyMultiplier = 1.0F;
+    @Setter
+    private float attackSpeed = 0.0F;
     private boolean isEnchantable;
-    @SuppressWarnings("unchecked")
-    private TagKey<Item>[] validEnchantmentTags = new TagKey[0];
+    private List<TagKey<Item>> validEnchantmentTags = Collections.emptyList();
     private boolean sneakBypassUse = false;
     @Setter
     private Supplier<ItemStack> brokenStack = () -> ItemStack.EMPTY;
     @Setter
-    private AoESymmetrical aoe = AoESymmetrical.none();
-    private final Set<Block> effectiveBlocks = new ObjectOpenHashSet<>();
-    private Predicate<BlockState> effectiveStates;
+    private AoESymmetrical aoe = AoESymmetrical.ZERO;
     private final Object2IntMap<ResourceKey<Enchantment>> defaultEnchantments = new Object2IntArrayMap<>();
 
     public ToolDefinitionBuilder behaviors(IToolBehavior<?>... behaviours) {
@@ -104,7 +99,7 @@ public class ToolDefinitionBuilder {
     @SafeVarargs
     public final ToolDefinitionBuilder validEnchantmentTags(TagKey<Item>... enchantmentTypes) {
         this.isEnchantable = true;
-        this.validEnchantmentTags = enchantmentTypes;
+        this.validEnchantmentTags = Arrays.asList(enchantmentTypes);
         return this;
     }
 
@@ -117,22 +112,10 @@ public class ToolDefinitionBuilder {
         return aoe(AoESymmetrical.of(additionalColumns, additionalRows, additionalDepth));
     }
 
-    public ToolDefinitionBuilder effectiveBlocks(Block... blocks) {
-        Collections.addAll(this.effectiveBlocks, blocks);
-        return this;
-    }
-
-    public ToolDefinitionBuilder effectiveStates(Predicate<BlockState> effectiveStates) {
-        this.effectiveStates = effectiveStates;
-        return this;
-    }
-
     public ToolDefinitionBuilder defaultEnchantment(ResourceKey<Enchantment> enchantment, int level) {
-        return this.defaultEnchantment(enchantment, level, 0);
-    }
-
-    public ToolDefinitionBuilder defaultEnchantment(ResourceKey<Enchantment> enchantment, int level, int growth) {
-        this.defaultEnchantments.put(enchantment, level);
+        if (ConfigHolder.INSTANCE.recipes.enchantedTools) {
+            this.defaultEnchantments.put(enchantment, level);
+        }
         return this;
     }
 
@@ -152,28 +135,13 @@ public class ToolDefinitionBuilder {
             private final float attackDamage = ToolDefinitionBuilder.this.attackDamage;
             private final float baseEfficiency = ToolDefinitionBuilder.this.baseEfficiency;
             private final float efficiencyMultiplier = ToolDefinitionBuilder.this.efficiencyMultiplier;
+            private final float attackSpeed = ToolDefinitionBuilder.this.attackSpeed;
             private final boolean isEnchantable = ToolDefinitionBuilder.this.isEnchantable;
-            private final TagKey<Item>[] validEnchantmentTags = ToolDefinitionBuilder.this.validEnchantmentTags;
+            private final List<TagKey<Item>> validEnchantmentTags = ToolDefinitionBuilder.this.validEnchantmentTags;
             private final boolean sneakBypassUse = ToolDefinitionBuilder.this.sneakBypassUse;
             private final Supplier<ItemStack> brokenStack = ToolDefinitionBuilder.this.brokenStack;
             private final AoESymmetrical aoeSymmetrical = ToolDefinitionBuilder.this.aoe;
-            private final Predicate<BlockState> effectiveStatePredicate;
             private final Object2IntMap<ResourceKey<Enchantment>> defaultEnchantments = ToolDefinitionBuilder.this.defaultEnchantments;
-
-            {
-                Set<Block> effectiveBlocks = ToolDefinitionBuilder.this.effectiveBlocks;
-                Predicate<BlockState> effectiveStates = ToolDefinitionBuilder.this.effectiveStates;
-                Predicate<BlockState> effectiveStatePredicate = null;
-                if (!effectiveBlocks.isEmpty()) {
-                    effectiveStatePredicate = state -> effectiveBlocks.contains(state.getBlock());
-                }
-                if (effectiveStates != null) {
-                    effectiveStatePredicate = effectiveStatePredicate == null ? effectiveStates :
-                            effectiveStatePredicate.or(effectiveStates);
-                }
-                this.effectiveStatePredicate = effectiveStatePredicate == null ? state -> false :
-                        effectiveStatePredicate;
-            }
 
             @Override
             public List<IToolBehavior<?>> getBehaviors() {
@@ -187,7 +155,7 @@ public class ToolDefinitionBuilder {
 
             @Override
             public boolean isToolEffective(BlockState state) {
-                return effectiveStatePredicate.test(state);
+                return tool.isCorrectForDrops(state);
             }
 
             @Override
@@ -196,17 +164,22 @@ public class ToolDefinitionBuilder {
             }
 
             @Override
-            public boolean isSuitableForBlockBreak() {
+            public int getDamagePerAction(ItemStack stack) {
+                return tool.damagePerBlock();
+            }
+
+            @Override
+            public boolean isSuitableForBlockBreak(ItemStack stack) {
                 return suitableForBlockBreaking;
             }
 
             @Override
-            public boolean isSuitableForAttacking() {
+            public boolean isSuitableForAttacking(ItemStack stack) {
                 return suitableForAttacking;
             }
 
             @Override
-            public boolean isSuitableForCrafting() {
+            public boolean isSuitableForCrafting(ItemStack stack) {
                 return suitableForCrafting;
             }
 
@@ -241,12 +214,17 @@ public class ToolDefinitionBuilder {
             }
 
             @Override
-            public boolean isEnchantable() {
+            public float getAttackSpeed() {
+                return attackSpeed;
+            }
+
+            @Override
+            public boolean isEnchantable(ItemStack stack) {
                 return isEnchantable;
             }
 
             @Override
-            public TagKey<Item>[] getValidEnchantmentTags() {
+            public List<TagKey<Item>> getValidEnchantmentTags() {
                 return validEnchantmentTags;
             }
 

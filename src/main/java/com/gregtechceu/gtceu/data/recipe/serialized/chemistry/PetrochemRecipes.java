@@ -1,13 +1,14 @@
 package com.gregtechceu.gtceu.data.recipe.serialized.chemistry;
 
-import com.gregtechceu.gtceu.api.material.material.Material;
+import com.gregtechceu.gtceu.api.data.chemical.material.Material;
 
 import net.minecraft.data.recipes.RecipeOutput;
 
 import static com.gregtechceu.gtceu.api.GTValues.*;
-import static com.gregtechceu.gtceu.api.tag.TagPrefix.dust;
-import static com.gregtechceu.gtceu.data.material.GTMaterials.*;
-import static com.gregtechceu.gtceu.data.recipe.GTRecipeTypes.*;
+import static com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialFlags.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
+import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
+import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
 
 public class PetrochemRecipes {
 
@@ -38,7 +39,7 @@ public class PetrochemRecipes {
                 .duration(20).EUt(96).save(provider);
 
         DISTILLATION_RECIPES.recipeBuilder("distill_light_oil")
-                .inputFluids(OilLight.getFluid(150))
+                .inputFluids(LightOil.getFluid(150))
                 .outputFluids(SulfuricHeavyFuel.getFluid(10))
                 .outputFluids(SulfuricLightFuel.getFluid(20))
                 .outputFluids(SulfuricNaphtha.getFluid(30))
@@ -46,7 +47,7 @@ public class PetrochemRecipes {
                 .duration(20).EUt(96).save(provider);
 
         DISTILLATION_RECIPES.recipeBuilder("distill_heavy_oil")
-                .inputFluids(OilHeavy.getFluid(100))
+                .inputFluids(HeavyOil.getFluid(100))
                 .outputFluids(SulfuricHeavyFuel.getFluid(250))
                 .outputFluids(SulfuricLightFuel.getFluid(45))
                 .outputFluids(SulfuricNaphtha.getFluid(15))
@@ -233,7 +234,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_lightly_steam_cracked_heavy_fuel")
                 .inputFluids(LightlySteamCrackedHeavyFuel.getFluid(1000))
-                .chancedOutput(dust, Carbon, 1111, 0)
+                .chancedOutput(dust, Carbon, "1/9", 0)
                 .outputFluids(LightFuel.getFluid(300))
                 .outputFluids(Naphtha.getFluid(50))
                 .outputFluids(Toluene.getFluid(25))
@@ -249,7 +250,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_severely_steam_cracked_heavy_fuel")
                 .inputFluids(SeverelySteamCrackedHeavyFuel.getFluid(1000))
-                .chancedOutput(dust, Carbon, 3333, 0)
+                .chancedOutput(dust, Carbon, "1/3", 0)
                 .outputFluids(LightFuel.getFluid(100))
                 .outputFluids(Naphtha.getFluid(125))
                 .outputFluids(Toluene.getFluid(80))
@@ -285,7 +286,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_lightly_steam_cracked_light_fuel")
                 .inputFluids(LightlySteamCrackedLightFuel.getFluid(1000))
-                .chancedOutput(dust, Carbon, 1111, 0)
+                .chancedOutput(dust, Carbon, "1/9", 0)
                 .outputFluids(HeavyFuel.getFluid(150))
                 .outputFluids(Naphtha.getFluid(400))
                 .outputFluids(Toluene.getFluid(40))
@@ -301,7 +302,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_severely_steam_cracked_light_fuel")
                 .inputFluids(SeverelySteamCrackedLightFuel.getFluid(1000))
-                .chancedOutput(dust, Carbon, 3333, 0)
+                .chancedOutput(dust, Carbon, "1/3", 0)
                 .outputFluids(HeavyFuel.getFluid(50))
                 .outputFluids(Naphtha.getFluid(100))
                 .outputFluids(Toluene.getFluid(30))
@@ -333,7 +334,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_lightly_steam_cracked_naphtha")
                 .inputFluids(LightlySteamCrackedNaphtha.getFluid(1000))
-                .chancedOutput(dust, Carbon, 1111, 0)
+                .chancedOutput(dust, Carbon, "1/9", 0)
                 .outputFluids(HeavyFuel.getFluid(75))
                 .outputFluids(LightFuel.getFluid(150))
                 .outputFluids(Toluene.getFluid(40))
@@ -349,7 +350,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_severely_steam_cracked_naphtha")
                 .inputFluids(SeverelySteamCrackedNaphtha.getFluid(1000))
-                .chancedOutput(dust, Carbon, 3333, 0)
+                .chancedOutput(dust, Carbon, "1/3", 0)
                 .outputFluids(HeavyFuel.getFluid(25))
                 .outputFluids(LightFuel.getFluid(50))
                 .outputFluids(Toluene.getFluid(20))
@@ -379,7 +380,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_lightly_steam_cracked_gas")
                 .inputFluids(LightlySteamCrackedGas.getFluid(1000))
-                .chancedOutput(dust, Carbon, 1111, 0)
+                .chancedOutput(dust, Carbon, "1/9", 0)
                 .outputFluids(Propene.getFluid(45))
                 .outputFluids(Ethane.getFluid(8))
                 .outputFluids(Ethylene.getFluid(85))
@@ -389,7 +390,7 @@ public class PetrochemRecipes {
 
         DISTILLATION_RECIPES.recipeBuilder("distill_severely_steam_cracked_gas")
                 .inputFluids(SeverelySteamCrackedGas.getFluid(1000))
-                .chancedOutput(dust, Carbon, 1111, 0)
+                .chancedOutput(dust, Carbon, "1/9", 0)
                 .outputFluids(Propene.getFluid(8))
                 .outputFluids(Ethane.getFluid(45))
                 .outputFluids(Ethylene.getFluid(92))

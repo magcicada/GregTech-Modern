@@ -6,44 +6,27 @@ inputs:
     description: If cache should be updated
     required: false
     default: 'false'
+  ref:
+    description: 'Ref to checkout'
+    required: false
 
 runs:
   using: 'composite'
-
   steps:
     - uses: actions/checkout@v4
       with:
-        submodules: true
-
-    - name: Set up JDK 21
-      shell: bash
-      run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
-
-    - name: Validate Gradle wrapper
-      uses: gradle/actions/wrapper-validation@v3
-
-    - name: Grant execute permission for gradlew
-      shell: bash
-      run: chmod +x gradlew
-
-    - name: Cache build directory
-      uses: actions/cache@v4
+        ref: ${{ inputs.ref || github.ref }}
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      env:
+        REF: ${{ inputs.ref || github.ref }}
       with:
-        path: |
-          build/neoForge
-          build/neoForm
-          build/tmp/.cache/**
-        key: "${{ runner.os }}-gradle-${{ hashFiles('**/libs.versions.*', '**/*.gradle*', '**/gradle-wrapper.properties') }}"
-        restore-keys: "${{ runner.os }}-gradle-"
+        distribution: temurin
+        java-version: ${{ contains(env.REF, '1.20.1') && '17' || '21' }}
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
+      uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-home-cache-cleanup: true
         cache-write-only: ${{ inputs.update-cache }}
-        generate-job-summary: false
-        gradle-home-cache-includes: |
-          caches
-          notifications
-          jdks
-          wrapper
+        cache-read-only: ${{ github.ref != 'refs/heads/1.20.1' && github.ref != 'refs/heads/1.21' }}
+        add-job-summary: 'on-failure'

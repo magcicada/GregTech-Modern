@@ -1,75 +1,66 @@
 package com.gregtechceu.gtceu.data.recipe.misc;
 
-import com.gregtechceu.gtceu.api.fluid.store.FluidStorageKeys;
-import com.gregtechceu.gtceu.utils.GTUtil;
+import com.gregtechceu.gtceu.api.fluids.store.FluidStorageKeys;
 
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.data.recipes.RecipeOutput;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 import static com.gregtechceu.gtceu.api.GTValues.*;
-import static com.gregtechceu.gtceu.data.material.GTMaterials.*;
-import static com.gregtechceu.gtceu.data.recipe.GTRecipeTypes.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
+import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
+import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
 
 public class FuelRecipes {
 
     public static void init(RecipeOutput provider) {
-        for (Item item : BuiltInRegistries.ITEM) {
-            var burnTime = GTUtil.getItemBurnTime(item);
-            if (burnTime > 0) {
-                STEAM_BOILER_RECIPES.recipeBuilder(BuiltInRegistries.ITEM.getKey(item))
-                        .inputItems(item)
-                        .duration(burnTime * 12) // remove the * 12 if SteamBoilerMachine:240 is uncommented
-                        .save(provider);
-            }
-        }
+        // furnace fuel-based recipes are handled in SteamBoilerLogic for dynamic burn time (and data map) support.
 
-        STEAM_BOILER_RECIPES.recipeBuilder("lava")
+        // override the default fluid recipes for lava and creosote
+        STEAM_BOILER_RECIPES.recipeBuilder("minecraft_lava")
                 .inputFluids(new FluidStack(Fluids.LAVA, 100))
-                .duration(600 * 12)
+                .duration(900) // 60s -> 45s Might still be too good with drip stone farming.
                 .save(provider);
 
-        STEAM_BOILER_RECIPES.recipeBuilder("creosote")
+        STEAM_BOILER_RECIPES.recipeBuilder("gtceu_creosote")
                 .inputFluids(Creosote.getFluid(250))
-                .duration(600 * 12)
+                .duration(350) // 150s -> 17.5s
                 .save(provider);
 
-        // semi-fluid fuels, like creosote
-        LARGE_BOILER_RECIPES.recipeBuilder("creosote")
-                .inputFluids(Creosote.getFluid(160))
-                .duration(10)
+        // semi-fluid fuels, like creosote - these are awful and need to be scrutinized heavily...
+        LARGE_BOILER_RECIPES.recipeBuilder("gtceu_creosote")
+                .inputFluids(Creosote.getFluid(250))
+                .duration(35)
                 .save(provider);
 
-        LARGE_BOILER_RECIPES.recipeBuilder("biomass")
+        LARGE_BOILER_RECIPES.recipeBuilder("gtceu_biomass")
                 .inputFluids(Biomass.getFluid(40))
-                .duration(10)
+                .duration(85)
                 .save(provider);
 
-        LARGE_BOILER_RECIPES.recipeBuilder("oil")
+        LARGE_BOILER_RECIPES.recipeBuilder("gtceu_oil")
                 .inputFluids(Oil.getFluid(200))
-                .duration(10)
+                .duration(50)
                 .save(provider);
 
-        LARGE_BOILER_RECIPES.recipeBuilder("heavy_oil")
-                .inputFluids(OilHeavy.getFluid(32))
-                .duration(10)
+        LARGE_BOILER_RECIPES.recipeBuilder("gtceu_heavy_oil")
+                .inputFluids(HeavyOil.getFluid(32))
+                .duration(50)
                 .save(provider);
 
-        LARGE_BOILER_RECIPES.recipeBuilder("sulfuric_heavy_fuel")
+        LARGE_BOILER_RECIPES.recipeBuilder("gtceu_sulfuric_heavy_fuel")
                 .inputFluids(SulfuricHeavyFuel.getFluid(32))
-                .duration(10)
+                .duration(50)
                 .save(provider);
 
-        LARGE_BOILER_RECIPES.recipeBuilder("heavy_fuel")
+        LARGE_BOILER_RECIPES.recipeBuilder("gtceu_heavy_fuel")
                 .inputFluids(HeavyFuel.getFluid(16))
-                .duration(30)
+                .duration(90)
                 .save(provider);
 
-        LARGE_BOILER_RECIPES.recipeBuilder("fish_oil")
+        LARGE_BOILER_RECIPES.recipeBuilder("gtceu_fish_oil")
                 .inputFluids(FishOil.getFluid(160))
-                .duration(10)
+                .duration(50)
                 .save(provider);
 
         // diesel generator fuels
@@ -152,7 +143,7 @@ public class FuelRecipes {
                 .save(provider);
 
         COMBUSTION_GENERATOR_FUELS.recipeBuilder("light_oil")
-                .inputFluids(OilLight.getFluid(32))
+                .inputFluids(LightOil.getFluid(32))
                 .duration(5)
                 .EUt(-V[LV])
                 .save(provider);
@@ -302,10 +293,24 @@ public class FuelRecipes {
                 .EUt(-V[EV])
                 .save(provider);
 
+        PLASMA_GENERATOR_FUELS.recipeBuilder("argon")
+                .inputFluids(Argon.getFluid(FluidStorageKeys.PLASMA, 1))
+                .outputFluids(Argon.getFluid(1))
+                .duration(96)
+                .EUt(-V[EV])
+                .save(provider);
+
         PLASMA_GENERATOR_FUELS.recipeBuilder("iron")
                 .inputFluids(Iron.getFluid(FluidStorageKeys.PLASMA, 1))
                 .outputFluids(Iron.getFluid(1))
-                .duration(96)
+                .duration(112)
+                .EUt(-V[EV])
+                .save(provider);
+
+        PLASMA_GENERATOR_FUELS.recipeBuilder("tin")
+                .inputFluids(Tin.getFluid(FluidStorageKeys.PLASMA, 1))
+                .outputFluids(Tin.getFluid(1))
+                .duration(128)
                 .EUt(-V[EV])
                 .save(provider);
 
@@ -313,6 +318,13 @@ public class FuelRecipes {
                 .inputFluids(Nickel.getFluid(FluidStorageKeys.PLASMA, 1))
                 .outputFluids(Nickel.getFluid(1))
                 .duration(192)
+                .EUt(-V[EV])
+                .save(provider);
+
+        PLASMA_GENERATOR_FUELS.recipeBuilder("americium")
+                .inputFluids(Americium.getFluid(FluidStorageKeys.PLASMA, 1))
+                .outputFluids(Americium.getFluid(1))
+                .duration(320)
                 .EUt(-V[EV])
                 .save(provider);
     }

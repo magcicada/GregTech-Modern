@@ -1,12 +1,16 @@
 package com.gregtechceu.gtceu.data.lang;
 
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
+import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
 import com.gregtechceu.gtceu.api.registry.GTRegistries;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
+
+import net.minecraft.core.registries.BuiltInRegistries;
 
 import com.tterrag.registrate.providers.RegistrateLangProvider;
 
 import static com.gregtechceu.gtceu.data.lang.LangHandler.multilineLang;
+import static com.gregtechceu.gtceu.data.lang.LangHandler.replace;
 import static com.gregtechceu.gtceu.utils.FormattingUtil.toEnglishName;
 
 public class ItemLang {
@@ -19,11 +23,24 @@ public class ItemLang {
 
     private static void initGeneratedNames(RegistrateLangProvider provider) {
         // RecipeTypes
-        for (var recipeType : GTRegistries.RECIPE_TYPES) {
-            provider.add(recipeType.getTranslationKey(), toEnglishName(recipeType.registryName.getPath()));
+        for (var recipeType : BuiltInRegistries.RECIPE_TYPE) {
+            if (recipeType instanceof GTRecipeType gtRecipeType) {
+                provider.add(gtRecipeType.getTranslationKey(), toEnglishName(gtRecipeType.registryName.getPath()));
+            }
         }
+
+        // Recipe Categories
+        provider.add("recipe_category.gtceu.arc_furnace_recycling", "Arc Scrapping");
+        provider.add("recipe_category.gtceu.macerator_recycling", "Part Grinding");
+        provider.add("recipe_category.gtceu.extractor_recycling", "Scrap Remelting");
+        provider.add("recipe_category.gtceu.ore_crushing", "Ore Grinding");
+        provider.add("recipe_category.gtceu.ore_forging", "Ore Crushing");
+        provider.add("recipe_category.gtceu.ore_bathing", "Ore Treating");
+        provider.add("recipe_category.gtceu.chem_dyes", "Chemical Dyeing");
+        provider.add("recipe_category.gtceu.ingot_molding", "Metal Molding");
+
         // TagPrefix
-        for (TagPrefix tagPrefix : TagPrefix.values()) {
+        for (TagPrefix tagPrefix : GTRegistries.TAG_PREFIXES) {
             provider.add(tagPrefix.getUnlocalizedName(), tagPrefix.langValue);
         }
         // GTToolType
@@ -42,37 +59,31 @@ public class ItemLang {
         provider.add("tagprefix.polymer.ingot", "%s Ingot");
     }
 
-    private static void initItemNames(RegistrateLangProvider provider) {}
+    private static void initItemNames(RegistrateLangProvider provider) {
+        replace(provider, "item.gtceu.tungsten_steel_fluid_cell", "%s Tungstensteel Cell");
+    }
 
     private static void initItemTooltips(RegistrateLangProvider provider) {
-        provider.add("item.gtceu.copper_credit.tooltip", "§70.125 Credits");
-        provider.add("item.gtceu.cupronickel_credit.tooltip", "§71 Credit");
-        provider.add("item.gtceu.silver_credit.tooltip", "§78 Credits");
-        provider.add("item.gtceu.gold_credit.tooltip", "§764 Credits");
-        provider.add("item.gtceu.platinum_credit.tooltip", "§7512 Credits");
-        provider.add("item.gtceu.osmium_credit.tooltip", "§74096 Credits");
-        provider.add("item.gtceu.naquadah_credit.tooltip", "§732768 Credits");
-        provider.add("item.gtceu.neutronium_credit.tooltip", "§7262144 Credits");
-        provider.add("item.gtceu.ancient_gold_coin.tooltip", "§7Found in ancient Ruins");
-        provider.add("item.gtceu.doge_coin.tooltip",
-                "§7wow much coin how monyey so cwypto pwz minye v wich vewy cuwwency wow");
-        provider.add("item.gtceu.chocolate_coin.tooltip", "§7Wrapped in Gold");
         provider.add("item.gtceu.empty_mold.tooltip", "§7Raw Plate to make Molds and Extrude Shapes");
         provider.add("item.gtceu.nano_saber.tooltip", "§7Ryujin no ken wo kurae!");
         provider.add("item.gtceu.plate_casting_mold.tooltip", "§7Mold for making Plates");
         provider.add("item.gtceu.casing_casting_mold.tooltip", "§7Mold for making Item Casings");
         provider.add("item.gtceu.gear_casting_mold.tooltip", "§7Mold for making Gears");
-        provider.add("item.gtceu.credit_casting_mold.tooltip", "§7Secure Mold for making Coins (Don't lose it!)");
         provider.add("item.gtceu.bottle_casting_mold.tooltip", "§7Mold for making Bottles");
         provider.add("item.gtceu.ingot_casting_mold.tooltip", "§7Mold for making Ingots");
         provider.add("item.gtceu.ball_casting_mold.tooltip", "§7Mold for making Balls");
+        provider.add("item.gtceu.tiny_pipe_casting_mold.tooltip", "§7Mold for making tiny Pipes");
+        provider.add("item.gtceu.small_pipe_casting_mold.tooltip", "§7Mold for making small Pipes");
+        provider.add("item.gtceu.normal_pipe_casting_mold.tooltip", "§7Mold for making Pipes");
+        provider.add("item.gtceu.large_pipe_casting_mold.tooltip", "§7Mold for making large Pipes");
+        provider.add("item.gtceu.huge_pipe_casting_mold.tooltip", "§7Mold for making full Block Pipes");
         provider.add("item.gtceu.block_casting_mold.tooltip", "§7Mold for making Blocks");
         provider.add("item.gtceu.nugget_casting_mold.tooltip", "§7Mold for making Nuggets");
         provider.add("item.gtceu.cylinder_casting_mold.tooltip", "§7Mold for shaping Cylinders");
         provider.add("item.gtceu.anvil_casting_mold.tooltip", "§7Mold for shaping Anvils");
         provider.add("item.gtceu.name_casting_mold.tooltip",
                 "§7Mold for naming Items in the Forming Press (rename Mold with Anvil)");
-        provider.add("item.gtceu.gear_casting_mold.small.tooltip", "§7Mold for making small Gears");
+        provider.add("item.gtceu.small_gear_casting_mold.tooltip", "§7Mold for making small Gears");
         provider.add("item.gtceu.rotor_casting_mold.tooltip", "§7Mold for making Rotors");
         provider.add("item.gtceu.plate_extruder_mold.tooltip", "§7Extruder Shape for making Plates");
         provider.add("item.gtceu.rod_extruder_mold.tooltip", "§7Extruder Shape for making Rods");
@@ -83,11 +94,11 @@ public class ItemLang {
                 "§7Extruder Shape for, wait, can't we just use a Furnace?");
         provider.add("item.gtceu.wire_extruder_mold.tooltip", "§7Extruder Shape for making Wires");
         provider.add("item.gtceu.casing_extruder_mold.tooltip", "§7Extruder Shape for making Item Casings");
-        provider.add("item.gtceu.pipe.tiny_extruder_mold.tooltip", "§7Extruder Shape for making tiny Pipes");
-        provider.add("item.gtceu.pipe.small_extruder_mold.tooltip", "§7Extruder Shape for making small Pipes");
-        provider.add("item.gtceu.pipe.normal_extruder_mold.tooltip", "§7Extruder Shape for making Pipes");
-        provider.add("item.gtceu.pipe.large_extruder_mold.tooltip", "§7Extruder Shape for making large Pipes");
-        provider.add("item.gtceu.pipe.huge_extruder_mold.tooltip", "§7Extruder Shape for making full Block Pipes");
+        provider.add("item.gtceu.tiny_pipe_extruder_mold.tooltip", "§7Extruder Shape for making tiny Pipes");
+        provider.add("item.gtceu.small_pipe_extruder_mold.tooltip", "§7Extruder Shape for making small Pipes");
+        provider.add("item.gtceu.normal_pipe_extruder_mold.tooltip", "§7Extruder Shape for making Pipes");
+        provider.add("item.gtceu.large_pipe_extruder_mold.tooltip", "§7Extruder Shape for making large Pipes");
+        provider.add("item.gtceu.huge_pipe_extruder_mold.tooltip", "§7Extruder Shape for making full Block Pipes");
         provider.add("item.gtceu.block_extruder_mold.tooltip", "§7Extruder Shape for making Blocks");
         provider.add("item.gtceu.sword_extruder_mold.tooltip", "§7Extruder Shape for making Swords");
         provider.add("item.gtceu.pickaxe_extruder_mold.tooltip", "§7Extruder Shape for making Pickaxes");
@@ -99,9 +110,9 @@ public class ItemLang {
         provider.add("item.gtceu.saw_extruder_mold.tooltip", "§7Extruder Shape for making Saws");
         provider.add("item.gtceu.gear_extruder_mold.tooltip", "§7Extruder Shape for making Gears");
         provider.add("item.gtceu.bottle_extruder_mold.tooltip", "§7Extruder Shape for making Bottles");
-        provider.add("item.gtceu.gear_small_extruder_mold.tooltip", "§7Extruder Shape for making Small Gears");
+        provider.add("item.gtceu.small_gear_extruder_mold.tooltip", "§7Extruder Shape for making Small Gears");
         provider.add("item.gtceu.foil_extruder_mold.tooltip", "§7Extruder Shape for making Foils from Non-Metals");
-        provider.add("item.gtceu.rod_long_extruder_mold.tooltip", "§7Extruder Shape for making Long Rods");
+        provider.add("item.gtceu.long_rod_extruder_mold.tooltip", "§7Extruder Shape for making Long Rods"); // unused
         provider.add("item.gtceu.rotor_extruder_mold.tooltip", "§7Extruder Shape for making Rotors");
         provider.add("item.gtceu.empty_spray_can.tooltip", "§7Can be filled with sprays of various colors");
         provider.add("fluid_cell.empty", "Empty");
@@ -116,9 +127,7 @@ public class ItemLang {
         provider.add("item.gtceu.zpm_battery_hull.tooltip", "§7An empty §fZPM §7Battery Hull");
         provider.add("item.gtceu.uv_battery_hull.tooltip", "§7An empty §3UV §7Battery Hull");
         provider.add("item.gtceu.battery.charge_time", "§aHolds %s %s of Power (%s)");
-        provider.add("item.gtceu.battery.charge_detailed.0", "§a%s/%s EU§7 - Tier %s §7(§a%s/%s %s remaining§7)");
-        provider.add("item.gtceu.battery.charge_detailed.1", "§e%s/%s EU§7 - Tier %s §7(§e%s/%s %s remaining§7)");
-        provider.add("item.gtceu.battery.charge_detailed.2", "§c%s/%s EU§7 - Tier %s §7(§c%s/%s %s remaining§7)");
+        provider.add("item.gtceu.battery.charge_detailed", "%s/%s EU§7 - Tier %s §7(%s/%s %s remaining§7)");
         provider.add("item.gtceu.battery.charge_unit.second", "seconds");
         provider.add("item.gtceu.battery.charge_unit.minute", "minutes");
         provider.add("item.gtceu.battery.charge_unit.hour", "hours");
@@ -150,7 +159,8 @@ public class ItemLang {
         provider.add("item.gtceu.robot.arm.tooltip", "§7Limits §fItems§7 to specific quantities as §fCover§7.");
         provider.add("item.gtceu.data_stick.tooltip", "§7A Low Capacity Data Storage");
         provider.add("item.gtceu.data_orb.tooltip", "§7A High Capacity Data Storage");
-        provider.add("item.gtceu.programmed_circuit.tooltip", "§7Use to open configuration GUI");
+        multilineLang(provider, "item.gtceu.programmed_circuit.tooltip",
+                "Use to open configuration GUI\nShift-Right-Click on a machine\nwith a circuit slot to set it to\nthis circuit's value.");
         provider.add("item.gtceu.circuit.integrated.gui", "§7Programmed Circuit Configuration");
         // multilineLang(provider, "item.gtceu.circuit.integrated.jei_description", "JEI is only showing recipes for the
         // given configuration.\n\nYou can select a configuration in the Programmed Circuit configuration tab.");
@@ -178,7 +188,7 @@ public class ItemLang {
         provider.add("item.gtceu.multilayer_fiber_reinforced_printed_circuit_board.tooltip",
                 "§7An Elite Circuit Board");
         provider.add("item.gtceu.wetware_printed_circuit_board.tooltip", "§7The Board that keeps life");
-        multilineLang(provider, "item.gtceu.vacuum_tube.tooltip", "§7Technically a Diode\n§cULV-tier");
+        multilineLang(provider, "item.gtceu.vacuum_tube.tooltip", "§7Technically a Diode\n§cULV-Tier");
         provider.add("item.gtceu.diode.tooltip", "§7Basic Electronic Component");
         provider.add("item.gtceu.resistor.tooltip", "§7Basic Electronic Component");
         provider.add("item.gtceu.transistor.tooltip", "§7Basic Electronic Component");
@@ -276,7 +286,7 @@ public class ItemLang {
         multilineLang(provider, "item.gtceu.wetware_processor.tooltip",
                 "§7You have a feeling like it's watching you\n§4LuV-Tier Circuit");
         multilineLang(provider, "item.gtceu.wetware_processor_assembly.tooltip",
-                "§7Can run Minecraft\n§4ZPM-tier Circuit");
+                "§7Can run Minecraft\n§4ZPM-Tier Circuit");
         multilineLang(provider, "item.gtceu.wetware_processor_computer.tooltip",
                 "§7Ultimate fusion of Flesh and Machine\n§4UV-Tier Circuit");
         multilineLang(provider, "item.gtceu.wetware_processor_mainframe.tooltip",
@@ -293,8 +303,8 @@ public class ItemLang {
                 "§7Filters §fItem§7 I/O as §fCover§7.\nCan be used as a §fConveyor Module§7 and §fRobotic Arm§7 upgrade.");
         multilineLang(provider, "item.gtceu.item_tag_filter.tooltip",
                 "§7Filters §fItem§7 I/O with §fItem Tags§7 as §fCover§7.\nCan be used as a §fConveyor Module§7 and §fRobotic Arm§7 upgrade.");
-        multilineLang(provider, "item.gtceu.ore_dictionary_filter.tooltip",
-                "§7Filters §fItem§7 I/O with §fOre Dictionary§7 as §fCover§7.\nCan be used as a §fConveyor Module§7 and §fRobotic Arm§7 upgrade.");
+        multilineLang(provider, "item.gtceu.tag_filter.tooltip",
+                "§7Filters §fItem§7 I/O with §fTag§7 as §fCover§7.\nCan be used as a §fConveyor Module§7 and §fRobotic Arm§7 upgrade.");
         multilineLang(provider, "item.gtceu.fluid_filter.tooltip",
                 "§7Filters §fFluid§7 I/O as §fCover§7.\nCan be used as an §fElectric Pump§7 and §fFluid Regulator§7 upgrade.");
         multilineLang(provider, "item.gtceu.fluid_tag_filter.tooltip",
@@ -325,9 +335,9 @@ public class ItemLang {
                 "§7Voids §fItems§7 as §fCover§7.\nActivate with §fSoft Mallet§7 after placement.");
         multilineLang(provider, "item.gtceu.advanced_item_voiding_cover.tooltip",
                 "§7Voids §fItems§7 with amount control as §fCover§7.\nActivate with §fSoft Mallet§7 after placement.");
-        provider.add("item.gtceu.facade_cover.tooltip", "§7Decorative Outfit §fCover§7.");
+        multilineLang(provider, "item.gtceu.facade_cover.tooltip",
+                "§7Decorative Outfit §fCover§7.\n§7Crafted using an Iron Plate and any block");
         provider.add("item.gtceu.computer_monitor_cover.tooltip", "§7Displays §fData§7 as §fCover§7.");
-        provider.add("item.gtceu.crafting_table_cover.tooltip", "§fAdvanced Workbench§7 on a Machine as §fCover§7.");
         provider.add("item.gtceu.shutter_module_cover.tooltip",
                 "§fBlocks Transfer§7 through attached Side as §fCover§7.");
         multilineLang(provider, "item.gtceu.solar_panel.tooltip",
@@ -342,7 +352,11 @@ public class ItemLang {
         multilineLang(provider, "item.gtceu.foam_sprayer.tooltip",
                 "§7Sprays Construction Foam\nUse on a frame to foam connected frames\nFoam can be colored");
         provider.add("item.gtceu.firebrick.tooltip", "§7Heat resistant");
+        provider.add("item.gtceu.basic_tape.tooltip",
+                "§7Not strong enough for mechanical issues\nCan be used to pick up crates without dropping their items");
+        provider.add("item.gtceu.terminal.tooltip",
+                "Shift + R-Click on a controller to automatically build the multiblock");
 
-        provider.add("item.gtceu.sus_record.desc", "sussy!");
+        provider.add("item.gtceu.sus_record.desc", "§7sussy!");
     }
 }

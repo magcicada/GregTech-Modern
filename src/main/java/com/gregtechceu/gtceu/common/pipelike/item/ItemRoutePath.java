@@ -1,11 +1,10 @@
 package com.gregtechceu.gtceu.common.pipelike.item;
 
-import com.gregtechceu.gtceu.api.material.material.properties.ItemPipeProperties;
+import com.gregtechceu.gtceu.api.data.chemical.material.properties.ItemPipeProperties;
 import com.gregtechceu.gtceu.api.pipenet.IRoutePath;
 import com.gregtechceu.gtceu.common.blockentity.ItemPipeBlockEntity;
 import com.gregtechceu.gtceu.utils.FacingPos;
-
-import com.lowdragmc.lowdraglib.side.item.ItemTransferHelper;
+import com.gregtechceu.gtceu.utils.GTTransferUtils;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -32,14 +31,17 @@ public class ItemRoutePath implements IRoutePath<IItemHandler> {
     @Getter
     private final ItemPipeProperties properties;
     private final Predicate<ItemStack> filters;
+    @Getter
+    private final boolean restrictive;
 
     public ItemRoutePath(ItemPipeBlockEntity targetPipe, @NotNull Direction facing, int distance,
-                         ItemPipeProperties properties,
+                         ItemPipeProperties properties, boolean restrictive,
                          List<Predicate<ItemStack>> filters) {
         this.targetPipe = targetPipe;
         this.targetFacing = facing;
         this.distance = distance;
         this.properties = properties;
+        this.restrictive = restrictive;
         this.filters = stack -> {
             for (Predicate<ItemStack> filter : filters)
                 if (!filter.test(stack)) return false;
@@ -54,8 +56,7 @@ public class ItemRoutePath implements IRoutePath<IItemHandler> {
 
     @Override
     public @Nullable IItemHandler getHandler(Level world) {
-        return ItemTransferHelper.getItemTransfer(world, getTargetPipePos().relative(targetFacing),
-                targetFacing.getOpposite());
+        return GTTransferUtils.getAdjacentItemHandler(world, getTargetPipePos(), targetFacing).orElse(null);
     }
 
     public boolean matchesFilters(ItemStack stack) {

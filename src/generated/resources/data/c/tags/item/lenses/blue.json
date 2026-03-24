@@ -1,8 +1,5 @@
 {
-  "values": [
-    {
-      "id": "gtceu:sapphire_lens",
-      "required": false
-    }
-  ]
+    "values": [
+        "gtceu:sapphire_lens"
+    ]
 }

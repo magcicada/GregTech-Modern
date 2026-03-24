@@ -24,11 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * @author Irgendwer01
- * @date 2023/11/4
- * @implNote ShapedEnergyTransferRecipeBuilder
- */
 @Accessors(fluent = true, chain = true)
 public class ShapedEnergyTransferRecipeBuilder {
 
@@ -69,7 +64,7 @@ public class ShapedEnergyTransferRecipeBuilder {
     }
 
     public ShapedEnergyTransferRecipeBuilder define(char cha, ItemStack itemStack) {
-        if (!itemStack.getComponentsPatch().isEmpty()) {
+        if (!itemStack.isComponentsPatchEmpty()) {
             key.put(cha, DataComponentIngredient.of(true, itemStack));
         } else {
             key.put(cha, Ingredient.of(itemStack));
@@ -105,9 +100,6 @@ public class ShapedEnergyTransferRecipeBuilder {
 
     public void save(RecipeOutput consumer) {
         var recipeId = id == null ? defaultId() : id;
-        consumer.accept(
-                ResourceLocation.fromNamespaceAndPath(recipeId.getNamespace(), "shaped" + "/" + recipeId.getPath()),
-                build(),
-                null);
+        consumer.accept(recipeId.withPrefix("shaped/"), build(), null);
     }
 }

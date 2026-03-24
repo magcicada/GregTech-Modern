@@ -2,8 +2,8 @@ package com.gregtechceu.gtceu.common.capability;
 
 import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
 import com.gregtechceu.gtceu.api.capability.IMedicalConditionTracker;
+import com.gregtechceu.gtceu.api.data.chemical.material.properties.HazardProperty;
 import com.gregtechceu.gtceu.api.data.medicalcondition.MedicalCondition;
-import com.gregtechceu.gtceu.api.material.material.properties.HazardProperty;
 import com.gregtechceu.gtceu.common.network.packets.hazard.SPacketAddHazardZone;
 import com.gregtechceu.gtceu.common.network.packets.hazard.SPacketRemoveHazardZone;
 import com.gregtechceu.gtceu.common.network.packets.hazard.SPacketSyncHazardZoneStrength;
@@ -18,7 +18,6 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -150,11 +149,7 @@ public class EnvironmentalHazardSavedData extends SavedData {
         playerStream.forEach(player -> {
             if (zone.trigger().protectionType().isProtected(player)) {
                 // entity has proper safety equipment, so damage it per material every 5 seconds.
-                if (player.level().getGameTime() % 100 == 0) {
-                    for (ArmorItem.Type type : zone.trigger().protectionType().getEquipmentTypes()) {
-                        player.getItemBySlot(type.getSlot()).hurtAndBreak(1, player, type.getSlot());
-                    }
-                }
+                zone.trigger().protectionType().damageEquipment(player, 1);
                 // don't progress this material condition if entity is protected
                 return;
             }
@@ -299,7 +294,7 @@ public class EnvironmentalHazardSavedData extends SavedData {
             boolean canSpread = zoneTag.getBoolean("can_spread");
             HazardProperty.HazardTrigger trigger = HazardProperty.HazardTrigger.ALL_TRIGGERS
                     .get(zoneTag.getString("trigger"));
-            MedicalCondition condition = com.gregtechceu.gtceu.api.data.medicalcondition.MedicalCondition.CONDITIONS
+            MedicalCondition condition = MedicalCondition.CONDITIONS
                     .get(zoneTag.getString("condition"));
 
             return new HazardZone(source, strength, canSpread, trigger, condition);

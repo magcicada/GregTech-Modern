@@ -1,7 +1,11 @@
 package com.gregtechceu.gtceu.api.machine;
 
+import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.block.IMachineBlock;
-import com.gregtechceu.gtceu.api.item.tool.IToolGridHighLight;
+import com.gregtechceu.gtceu.api.blockentity.IPaintable;
+import com.gregtechceu.gtceu.api.item.tool.IToolGridHighlight;
+import com.gregtechceu.gtceu.client.model.machine.MachineRenderState;
+import com.gregtechceu.gtceu.core.mixins.LevelAccessor;
 
 import com.lowdragmc.lowdraglib.syncdata.blockentity.IAsyncAutoSyncBlockEntity;
 import com.lowdragmc.lowdraglib.syncdata.blockentity.IAutoPersistBlockEntity;
@@ -11,21 +15,27 @@ import com.lowdragmc.lowdraglib.syncdata.managed.MultiManagedStorage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.common.extensions.IBlockEntityExtension;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A simple compound Interface for all my TileEntities.
  * <p/>
  * Also delivers most of the Information about TileEntities.
  */
-public interface IMachineBlockEntity extends IToolGridHighLight, IAsyncAutoSyncBlockEntity, IRPCBlockEntity,
-                                     IAutoPersistBlockEntity {
+public interface IMachineBlockEntity extends IToolGridHighlight, IAsyncAutoSyncBlockEntity, IRPCBlockEntity,
+                                     IAutoPersistBlockEntity, IPaintable, IBlockEntityExtension {
 
     default BlockEntity self() {
         return (BlockEntity) this;
     }
 
-    default Level level() {
+    default @Nullable Level level() {
         return self().getLevel();
     }
 
@@ -34,25 +44,41 @@ public interface IMachineBlockEntity extends IToolGridHighLight, IAsyncAutoSyncB
     }
 
     default void notifyBlockUpdate() {
-        if (level() != null) {
-            level().updateNeighborsAt(pos(), level().getBlockState(pos()).getBlock());
+        Level level = level();
+        if (level != null) {
+            level.updateNeighborsAt(pos(), level.getBlockState(pos()).getBlock());
         }
     }
 
     default void scheduleRenderUpdate() {
         var pos = pos();
-        if (level() != null) {
-            var state = level().getBlockState(pos);
-            if (level().isClientSide) {
-                level().sendBlockUpdated(pos, state, state, 1 << 3);
+        Level level = level();
+        if (level != null) {
+            var state = level.getBlockState(pos);
+            if (level.isClientSide) {
+                level.sendBlockUpdated(pos, state, state, Block.UPDATE_IMMEDIATE);
+                ClientCallWrapper.requestModelDataUpdate(this);
             } else {
-                level().blockEvent(pos, state.getBlock(), 1, 0);
+                level.blockEvent(pos, state.getBlock(), 1, 0);
             }
         }
     }
 
+    @Override
+    default @NotNull ModelData getModelData() {
+        ModelData.Builder data = IBlockEntityExtension.super.getModelData().derive();
+        getMetaMachine().updateModelData(data);
+        return data.build();
+    }
+
     default long getOffsetTimer() {
-        return level() == null ? getOffset() : (level().getGameTime() + getOffset());
+        Level level = level();
+        if (level == null) return getOffset();
+        else if (level.isClientSide()) return GTValues.CLIENT_TIME + getOffset();
+
+        var server = level.getServer();
+        if (server != null) return server.getTickCount() + getOffset();
+        return getOffset();
     }
 
     default MachineDefinition getDefinition() {
@@ -63,6 +89,10 @@ public interface IMachineBlockEntity extends IToolGridHighLight, IAsyncAutoSyncB
                     self().getBlockState().getBlock());
         }
     }
+
+    MachineRenderState getRenderState();
+
+    void setRenderState(MachineRenderState state);
 
     MetaMachine getMetaMachine();
 
@@ -80,5 +110,32 @@ public interface IMachineBlockEntity extends IToolGridHighLight, IAsyncAutoSyncB
     default void loadCustomPersistedData(CompoundTag tag) {
         IAutoPersistBlockEntity.super.loadCustomPersistedData(tag);
         getMetaMachine().loadCustomPersistedData(tag);
+    }
+
+    @Override
+    default int getPaintingColor() {
+        return getMetaMachine().getPaintingColor();
+    }
+
+    @Override
+    default void setPaintingColor(int color) {
+        getMetaMachine().setPaintingColor(color);
+    }
+
+    @Override
+    default int getDefaultPaintingColor() {
+        return getMetaMachine().getDefaultPaintingColor();
+    }
+
+    final class ClientCallWrapper {
+
+        public static void requestModelDataUpdate(IMachineBlockEntity blockEntity) {
+            LevelAccessor accessor = (LevelAccessor) blockEntity.level();
+            if (accessor == null || Thread.currentThread() != accessor.gtceu$getThread()) {
+                // don't update model data on worker threads
+                return;
+            }
+            blockEntity.requestModelDataUpdate();
+        }
     }
 }

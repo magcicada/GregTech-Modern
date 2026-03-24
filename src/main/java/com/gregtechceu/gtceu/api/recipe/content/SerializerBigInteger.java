@@ -8,11 +8,6 @@ import com.mojang.serialization.Lifecycle;
 
 import java.math.BigInteger;
 
-/**
- * @author KilaBash
- * @date 2022/06/22
- * @implNote SerializerBigInteger
- */
 public class SerializerBigInteger implements IContentSerializer<BigInteger> {
 
     public static final Codec<BigInteger> CODEC = Codec.STRING.comapFlatMap(str -> {
@@ -21,17 +16,11 @@ public class SerializerBigInteger implements IContentSerializer<BigInteger> {
         } catch (Exception e) {
             return DataResult.error(e::getMessage, Lifecycle.stable());
         }
-    },
-            BigInteger::toString);
+    }, BigInteger::toString);
 
     public static SerializerBigInteger INSTANCE = new SerializerBigInteger();
 
     private SerializerBigInteger() {}
-
-    @Override
-    public Codec<BigInteger> codec() {
-        return CODEC;
-    }
 
     @Override
     public void toNetwork(RegistryFriendlyByteBuf buf, BigInteger content) {
@@ -45,18 +34,29 @@ public class SerializerBigInteger implements IContentSerializer<BigInteger> {
 
     @Override
     public BigInteger of(Object o) {
-        if (o instanceof BigInteger) {
-            return (BigInteger) o;
-        } else if (o instanceof Number) {
-            return BigInteger.valueOf(((Number) o).longValue());
+        if (o instanceof BigInteger b) {
+            return b;
+        } else if (o instanceof Number n) {
+            return BigInteger.valueOf(n.longValue());
         } else if (o instanceof CharSequence) {
             return new BigInteger(o.toString());
+        } else {
+            return BigInteger.ZERO;
         }
-        return BigInteger.ZERO;
     }
 
     @Override
     public BigInteger defaultValue() {
         return BigInteger.ZERO;
+    }
+
+    @Override
+    public Class<BigInteger> contentClass() {
+        return BigInteger.class;
+    }
+
+    @Override
+    public Codec<BigInteger> codec() {
+        return CODEC;
     }
 }

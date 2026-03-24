@@ -5,12 +5,14 @@ import com.gregtechceu.gtceu.client.EnvironmentalHazardClientHandler;
 
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import lombok.AllArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 
 @AllArgsConstructor
 public class SPacketRemoveHazardZone implements CustomPacketPayload {
@@ -18,24 +20,26 @@ public class SPacketRemoveHazardZone implements CustomPacketPayload {
     public static final ResourceLocation ID = GTCEu.id("remove_hazard_zone");
     public static final Type<SPacketRemoveHazardZone> TYPE = new Type<>(ID);
     public static final StreamCodec<FriendlyByteBuf, SPacketRemoveHazardZone> CODEC = StreamCodec
-            .ofMember(SPacketRemoveHazardZone::encode, SPacketRemoveHazardZone::decode);
+            .ofMember(SPacketRemoveHazardZone::encode, SPacketRemoveHazardZone::new);
 
     public ChunkPos pos;
+
+    public SPacketRemoveHazardZone(FriendlyByteBuf buf) {
+        pos = buf.readChunkPos();
+    }
 
     public void encode(FriendlyByteBuf buf) {
         buf.writeChunkPos(pos);
     }
 
-    public static SPacketRemoveHazardZone decode(FriendlyByteBuf buf) {
-        return new SPacketRemoveHazardZone(buf.readChunkPos());
-    }
-
-    public static void execute(SPacketRemoveHazardZone packet, IPayloadContext handler) {
-        EnvironmentalHazardClientHandler.INSTANCE.removeHazardZone(packet.pos);
+    public void execute(IPayloadContext context) {
+        if (context.flow() == PacketFlow.CLIENTBOUND) {
+            EnvironmentalHazardClientHandler.INSTANCE.removeHazardZone(pos);
+        }
     }
 
     @Override
-    public Type<? extends CustomPacketPayload> type() {
+    public @NotNull Type<SPacketRemoveHazardZone> type() {
         return TYPE;
     }
 }

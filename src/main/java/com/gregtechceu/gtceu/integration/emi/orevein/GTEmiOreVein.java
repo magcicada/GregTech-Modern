@@ -1,12 +1,12 @@
 package com.gregtechceu.gtceu.integration.emi.orevein;
 
-import com.gregtechceu.gtceu.api.registry.GTRegistries;
-import com.gregtechceu.gtceu.api.worldgen.GTOreDefinition;
-import com.gregtechceu.gtceu.integration.GTOreVeinWidget;
+import com.gregtechceu.gtceu.api.data.worldgen.GTOreDefinition;
+import com.gregtechceu.gtceu.integration.xei.widgets.GTOreVeinWidget;
 
 import com.lowdragmc.lowdraglib.emi.ModularEmiRecipe;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 
+import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceLocation;
 
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
@@ -17,9 +17,9 @@ import java.util.List;
 
 public class GTEmiOreVein extends ModularEmiRecipe<WidgetGroup> {
 
-    private final GTOreDefinition oreDefinition;
+    private final Holder<GTOreDefinition> oreDefinition;
 
-    public GTEmiOreVein(GTOreDefinition oreDefinition) {
+    public GTEmiOreVein(Holder<GTOreDefinition> oreDefinition) {
         super(() -> new GTOreVeinWidget(oreDefinition));
         this.oreDefinition = oreDefinition;
     }
@@ -31,12 +31,12 @@ public class GTEmiOreVein extends ModularEmiRecipe<WidgetGroup> {
 
     @Override
     public @Nullable ResourceLocation getId() {
-        return GTRegistries.ORE_VEINS.getKey(oreDefinition);
+        return oreDefinition.getKey().location().withPrefix("/ore_vein_diagram/");
     }
 
     @Override
     public List<EmiStack> getOutputs() {
-        return GTOreVeinWidget.getContainedOresAndBlocks(oreDefinition)
+        return GTOreVeinWidget.getContainedOresAndBlocks(oreDefinition.value())
                 .stream()
                 .map(EmiStack::of)
                 .toList();

@@ -1,13 +1,11 @@
 package com.gregtechceu.gtceu.common.block;
 
-import com.gregtechceu.gtceu.api.item.LampBlockItem;
-import com.gregtechceu.gtceu.client.renderer.block.LampRenderer;
-import com.gregtechceu.gtceu.data.tag.GTDataComponents;
-
-import com.lowdragmc.lowdraglib.client.renderer.IBlockRendererProvider;
-import com.lowdragmc.lowdraglib.client.renderer.IRenderer;
+import com.gregtechceu.gtceu.common.data.GTBlockStateProperties;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
+import com.gregtechceu.gtceu.common.item.LampBlockItem;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
@@ -16,6 +14,7 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
@@ -29,15 +28,13 @@ import net.minecraft.world.phys.HitResult;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 
-public class LampBlock extends Block implements IBlockRendererProvider {
+public class LampBlock extends Block {
 
-    public static final BooleanProperty BLOOM = BooleanProperty.create("bloom");
+    public static final BooleanProperty BLOOM = GTBlockStateProperties.BLOOM;
     public static final BooleanProperty LIGHT = BlockStateProperties.LIT;
-    public static final BooleanProperty INVERTED = BooleanProperty.create("inverted");
+    public static final BooleanProperty INVERTED = GTBlockStateProperties.INVERTED;
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
 
     public static final int BLOOM_FLAG = 1;
@@ -47,36 +44,32 @@ public class LampBlock extends Block implements IBlockRendererProvider {
 
     public final DyeColor color;
     public final boolean bordered;
-    private final Map<BlockState, LampRenderer> renderers = new IdentityHashMap<>();
 
     public LampBlock(Properties properties, DyeColor color, boolean bordered) {
         super(properties);
         this.color = color;
         this.bordered = bordered;
         registerDefaultState(defaultBlockState()
-                .setValue(BLOOM, true)
+                .setValue(GTBlockStateProperties.BLOOM, true)
                 .setValue(LIGHT, true)
                 .setValue(INVERTED, false)
                 .setValue(POWERED, false));
-        for (BlockState state : getStateDefinition().getPossibleStates()) {
-            renderers.put(state, new LampRenderer(this, state));
-        }
     }
 
     public static boolean isLightActive(BlockState state) {
         return state.getValue(INVERTED) != state.getValue(POWERED);
     }
 
-    public boolean isInverted(BlockState state) {
+    public static boolean isInverted(BlockState state) {
         return state.getValue(INVERTED);
     }
 
-    public boolean isLightEnabled(BlockState state) {
+    public static boolean isLightEnabled(BlockState state) {
         return state.getValue(LIGHT);
     }
 
-    public boolean isBloomEnabled(BlockState state) {
-        return state.getValue(BLOOM);
+    public static boolean isBloomEnabled(BlockState state) {
+        return state.getValue(GTBlockStateProperties.BLOOM);
     }
 
     public LampBlockItem.LampData getDataFromState(BlockState state) {
@@ -94,12 +87,18 @@ public class LampBlock extends Block implements IBlockRendererProvider {
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        super.createBlockStateDefinition(builder.add(INVERTED, BLOOM, LIGHT, POWERED));
+        super.createBlockStateDefinition(builder.add(INVERTED, GTBlockStateProperties.BLOOM, LIGHT, POWERED));
     }
 
     @Override
     public int getLightEmission(BlockState state, BlockGetter level, BlockPos pos) {
         return state.getValue(LIGHT) && isLightActive(state) ? 15 : 0;
+    }
+
+    @Override
+    public BlockState getAppearance(BlockState state, BlockAndTintGetter level, BlockPos pos, Direction side,
+                                    @Nullable BlockState queryState, @Nullable BlockPos queryPos) {
+        return state.getBlock().defaultBlockState();
     }
 
     @Override
@@ -156,16 +155,10 @@ public class LampBlock extends Block implements IBlockRendererProvider {
         List<ItemStack> returnValue = super.getDrops(state, params);
         for (ItemStack stack : returnValue) {
             if (stack.is(this.asItem())) {
-                stack.set(GTDataComponents.LAMP_DATA, this.getDataFromState(state));
+                stack.set(GTDataComponents.LAMP_DATA, getDataFromState(state));
                 break;
             }
         }
         return returnValue;
-    }
-
-    @Nullable
-    @Override
-    public IRenderer getRenderer(BlockState state) {
-        return renderers.get(state);
     }
 }

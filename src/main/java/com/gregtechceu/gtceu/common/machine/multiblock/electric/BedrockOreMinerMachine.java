@@ -2,39 +2,35 @@ package com.gregtechceu.gtceu.common.machine.multiblock.electric;
 
 import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.GTValues;
+import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
+import com.gregtechceu.gtceu.api.capability.recipe.EURecipeCapability;
+import com.gregtechceu.gtceu.api.capability.recipe.IO;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
+import com.gregtechceu.gtceu.api.data.worldgen.bedrockore.WeightedMaterial;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.feature.ITieredMachine;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableElectricMultiblockMachine;
 import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
-import com.gregtechceu.gtceu.api.material.material.Material;
-import com.gregtechceu.gtceu.api.tag.TagPrefix;
+import com.gregtechceu.gtceu.api.misc.EnergyContainerList;
+import com.gregtechceu.gtceu.common.data.GTBlocks;
+import com.gregtechceu.gtceu.common.data.GTMaterialBlocks;
+import com.gregtechceu.gtceu.common.data.GTMaterials;
 import com.gregtechceu.gtceu.common.machine.trait.BedrockOreMinerLogic;
-import com.gregtechceu.gtceu.data.block.GTBlocks;
-import com.gregtechceu.gtceu.data.material.GTMaterials;
+import com.gregtechceu.gtceu.common.machine.trait.FluidDrillLogic;
 import com.gregtechceu.gtceu.utils.FormattingUtil;
+import com.gregtechceu.gtceu.utils.GTUtil;
 
 import net.minecraft.ChatFormatting;
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.util.Mth;
 
 import lombok.Getter;
 
 import java.util.List;
-import java.util.Map;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-/**
- * @author Screret
- * @date 2023/7/12
- * @implNote BedrockOreMinerMachine
- */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class BedrockOreMinerMachine extends WorkableElectricMultiblockMachine implements ITieredMachine {
 
     @Getter
@@ -56,7 +52,11 @@ public class BedrockOreMinerMachine extends WorkableElectricMultiblockMachine im
     }
 
     public int getEnergyTier() {
-        return Math.min(this.tier + 1, Math.max(this.tier, getOverclockTier()));
+        var energyContainers = this.getCapabilitiesFlat(IO.IN, EURecipeCapability.CAP);
+        if (energyContainers.isEmpty()) return this.tier;
+        var energyCont = new EnergyContainerList(energyContainers.stream().filter(IEnergyContainer.class::isInstance)
+                .map(IEnergyContainer.class::cast).toList());
+        return Math.min(this.tier + 1, Math.max(this.tier, GTUtil.getFloorTierByVoltage(energyCont.getInputVoltage())));
     }
 
     @Override
@@ -71,17 +71,18 @@ public class BedrockOreMinerMachine extends WorkableElectricMultiblockMachine im
                 // Ore names
                 textList.add(Component.translatable("gtceu.multiblock.ore_rig.drilled_ores_list")
                         .withStyle(ChatFormatting.GREEN));
-                List<Map.Entry<Integer, Material>> drilledOres = getRecipeLogic().getVeinMaterials();
+                List<WeightedMaterial> drilledOres = getRecipeLogic().getVeinMaterials();
                 for (var entry : drilledOres) {
-                    Component fluidInfo = entry.getValue().getLocalizedName().withStyle(ChatFormatting.GREEN);
+                    Component fluidInfo = entry.material().getLocalizedName().withStyle(ChatFormatting.GREEN);
                     textList.add(Component.translatable("gtceu.multiblock.ore_rig.drilled_ore_entry", fluidInfo)
                             .withStyle(ChatFormatting.GRAY));
                 }
 
                 // Ore amount
-                Component amountInfo = Component.literal(FormattingUtil.formatNumbers(
-                        getRecipeLogic().getOreToProduce() * 20L / BedrockOreMinerLogic.MAX_PROGRESS) +
-                        "/s").withStyle(ChatFormatting.BLUE);
+                float produced = getRecipeLogic().getOreToProduce() * getLevel().tickRateManager().tickrate();
+                produced = Mth.floor(produced / FluidDrillLogic.MAX_PROGRESS);
+                Component amountInfo = Component.literal(FormattingUtil.formatNumbers(produced) + "/s")
+                        .withStyle(ChatFormatting.BLUE);
                 textList.add(Component.translatable("gtceu.multiblock.ore_rig.ore_amount", amountInfo)
                         .withStyle(ChatFormatting.GRAY));
             } else {
@@ -121,7 +122,7 @@ public class BedrockOreMinerMachine extends WorkableElectricMultiblockMachine im
         return 1;
     }
 
-    public static Block getCasingState(int tier) {
+    public static net.minecraft.world.level.block.Block getCasingState(int tier) {
         if (tier == GTValues.MV)
             return GTBlocks.CASING_STEEL_SOLID.get();
         if (tier == GTValues.HV)
@@ -131,14 +132,14 @@ public class BedrockOreMinerMachine extends WorkableElectricMultiblockMachine im
         return GTBlocks.CASING_STEEL_SOLID.get();
     }
 
-    public static Block getFrameState(int tier) {
+    public static net.minecraft.world.level.block.Block getFrameState(int tier) {
         if (tier == GTValues.MV)
-            return GTBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.Steel).get();
+            return GTMaterialBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.Steel).get();
         if (tier == GTValues.HV)
-            return GTBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.Titanium).get();
+            return GTMaterialBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.Titanium).get();
         if (tier == GTValues.EV)
-            return GTBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.TungstenSteel).get();
-        return GTBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.Steel).get();
+            return GTMaterialBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.TungstenSteel).get();
+        return GTMaterialBlocks.MATERIAL_BLOCKS.get(TagPrefix.frameGt, GTMaterials.Steel).get();
     }
 
     public static ResourceLocation getBaseTexture(int tier) {

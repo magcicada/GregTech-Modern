@@ -9,17 +9,46 @@ def mod_name = getConfig("mod_name")
 def mod_description = getConfig("mod_description")
 def mod_url = getConfig("mod_url")
 def mod_issue_tracker = getConfig("mod_issue_tracker")
-def loader_version = getConfig("loader_version")
 
-tasks.withType(ProcessResources).configureEach {
-    var forgeVers = forge.versions.forgeShortVersion.get().split("\\.")
+String suffix = System.getenv("VERSION_SUFFIX")
+String version_toml = "$version" + (suffix ? "+$suffix" : "")
+
+tasks.register('printVersion') {
+    doLast {
+        println mod_version
+    }
+}
+
+// Create run-folders for non-client configs to avoid pollution of dev envs
+tasks.matching { it.name.startsWith('prepare') }.configureEach {
+    doFirst {
+        mkdir('run')
+        mkdir('run/server')
+        mkdir('run/gametest')
+        mkdir('run/data')
+    }
+}
+
+// This block of code expands all declared replace properties in the specified resource targets.
+// A missing property will result in an error. Properties are expanded using ${} Groovy notation.
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var neoVersion = libs.versions.neoForge.get()
+    neoVersion = neoVersion.substring(0, neoVersion.lastIndexOf('.'))
+    var configurationVersion = forge.versions.configuration.get()
+    configurationVersion = configurationVersion.substring(0, configurationVersion.lastIndexOf('-'))
     var replaceProperties = [
-            version             : version,
+            version             : version_toml,
             mod_id              : mod_id,
-            forge_version       : forgeVers[0] + "." + forgeVers[1], // only specify major version of forge
-            loader_version      : loader_version,
+            minecraft_version   : "[1.21, 1.21.1]",
+            loader_version      : libs.versions.loader.get(),
+            neo_version         : neoVersion,
+            configuration_version : configurationVersion,
             kjs_version         : forge.versions.kubejs.get().split("\\.")[0], // only specify major version of kjs
-            minecraft_version   : libs.versions.minecraft.get(),
+            ldlib_version       : forge.versions.ldlib.get(),
+            jei_version         : forge.versions.jei.get(),
+            emi_version         : forge.versions.emi.get(),
+            jade_version        : forge.versions.jade.get(),
+            modernfix_version   : forge.versions.modernfix.get(),
             mod_license         : mod_license,
             mod_name            : mod_name,
             mod_description     : mod_description,
@@ -27,8 +56,12 @@ tasks.withType(ProcessResources).configureEach {
             mod_issue_tracker   : mod_issue_tracker
     ]
     inputs.properties replaceProperties
-
-    filesMatching(['META-INF/neoforge.mods.toml']) {
-        expand replaceProperties + [project: project]
-    }
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
 }
+// Include the output of "generateModMetadata" as an input directory for the build
+// this works with both building through Gradle and the IDE.
+sourceSets.main.resources.srcDir generateModMetadata
+// To avoid having to run "generateModMetadata" manually, make it run on every project reload
+neoForge.ideSyncTask generateModMetadata

@@ -1,45 +1,54 @@
 package com.gregtechceu.gtceu.common.machine.storage;
 
+import com.gregtechceu.gtceu.api.blockentity.MetaMachineBlockEntity;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
+import com.gregtechceu.gtceu.api.data.chemical.material.Material;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.gui.UITemplate;
+import com.gregtechceu.gtceu.api.gui.widget.SlotWidget;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
-import com.gregtechceu.gtceu.api.machine.feature.IMachineModifyDrops;
-import com.gregtechceu.gtceu.api.machine.feature.IUIMachine;
+import com.gregtechceu.gtceu.api.machine.feature.*;
+import com.gregtechceu.gtceu.api.machine.property.GTMachineModelProperties;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
-import com.gregtechceu.gtceu.api.material.material.Material;
+import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
 
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
 import com.lowdragmc.lowdraglib.gui.widget.LabelWidget;
-import com.lowdragmc.lowdraglib.gui.widget.SlotWidget;
+import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
+import com.lowdragmc.lowdraglib.syncdata.annotation.RequireRerender;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.Unit;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemContainerContents;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.phys.BlockHitResult;
 
 import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
-
-import javax.annotation.ParametersAreNonnullByDefault;
-
-/**
- * @author h3tR
- * @date 2023/3/27
- * @implNote CrateMachine
- */
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
-public class CrateMachine extends MetaMachine implements IUIMachine, IMachineModifyDrops {
+public class CrateMachine extends MetaMachine implements IUIMachine, IMachineLife,
+                          IDropSaveMachine, IInteractedMachine {
 
     public static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(CrateMachine.class,
             MetaMachine.MANAGED_FIELD_HOLDER);
 
+    public static final BooleanProperty TAPED_PROPERTY = GTMachineModelProperties.IS_TAPED;
+
     @Override
-    public ManagedFieldHolder getFieldHolder() {
+    public @NotNull ManagedFieldHolder getFieldHolder() {
         return MANAGED_FIELD_HOLDER;
     }
 
@@ -47,6 +56,11 @@ public class CrateMachine extends MetaMachine implements IUIMachine, IMachineMod
     private final Material material;
     @Getter
     private final int inventorySize;
+    @Getter
+    @RequireRerender
+    @Persisted
+    @DescSynced
+    private boolean isTaped;
 
     @Persisted
     public final NotifiableItemStackHandler inventory;
@@ -84,7 +98,54 @@ public class CrateMachine extends MetaMachine implements IUIMachine, IMachineMod
     }
 
     @Override
-    public void onDrops(List<ItemStack> drops, Player entity) {
-        MetaMachine.clearInventory(drops, inventory.storage);
+    public ItemInteractionResult onUseWithItem(ItemStack stack, BlockState state, Level world, BlockPos pos,
+                                               Player player, InteractionHand hand, BlockHitResult hit) {
+        if (player.isShiftKeyDown() && !isTaped) {
+            if (stack.is(GTItems.DUCT_TAPE.asItem()) || stack.is(GTItems.BASIC_TAPE.asItem())) {
+                if (!player.isCreative()) {
+                    stack.shrink(1);
+                }
+                isTaped = true;
+                setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_TAPED, isTaped));
+                return ItemInteractionResult.sidedSuccess(world.isClientSide);
+            }
+        }
+        return IInteractedMachine.super.onUseWithItem(stack, state, world, pos, player, hand, hit);
+    }
+
+    @Override
+    public void applyImplicitComponents(MetaMachineBlockEntity.ExDataComponentInput componentInput) {
+        super.applyImplicitComponents(componentInput);
+        if (componentInput.has(GTDataComponents.TAPED) && componentInput.get(DataComponents.CONTAINER) != null) {
+            var contents = componentInput.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY);
+            contents.copyInto(inventory.storage.getStacks());
+            setRenderState(getRenderState().setValue(GTMachineModelProperties.IS_TAPED, false));
+        }
+    }
+
+    @Override
+    public void collectImplicitComponents(DataComponentMap.Builder components) {
+        super.collectImplicitComponents(components);
+        if (isTaped) {
+            components.set(GTDataComponents.TAPED, Unit.INSTANCE);
+            components.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(inventory.storage.getStacks()));
+        }
+    }
+
+    @Override
+    public void removeItemComponentsFromTag(CompoundTag tag) {
+        super.removeItemComponentsFromTag(tag);
+        tag.remove("isTaped");
+        tag.remove("inventory");
+    }
+
+    @Override
+    public boolean saveBreak() {
+        return isTaped;
+    }
+
+    @Override
+    public void onMachineRemoved() {
+        if (!isTaped) clearInventory(inventory.storage);
     }
 }
