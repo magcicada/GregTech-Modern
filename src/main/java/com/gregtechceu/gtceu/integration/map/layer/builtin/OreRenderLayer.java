@@ -9,7 +9,6 @@ import com.gregtechceu.gtceu.common.data.GTMaterials;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.integration.map.GenericMapRenderer;
 import com.gregtechceu.gtceu.integration.map.layer.MapRenderLayer;
-import com.gregtechceu.gtceu.integration.recipeviewer.widgets.OreVeinRecipeWidget;
 import com.gregtechceu.gtceu.integration.xei.widgets.GTOreVeinWidget;
 
 import net.minecraft.core.BlockPos;
@@ -39,7 +38,7 @@ public class OreRenderLayer extends MapRenderLayer {
                 ClientProxy.CLIENT_ORE_VEINS.inverse().get(vein.definition()) == null) {
             return Component.translatable("gtceu.minimap.ore_vein.depleted");
         }
-        return Component.translatable(OreVeinRecipeWidget.getOreName(vein.definition()));
+        return Component.translatable(GTOreVeinWidget.getOreName(vein.definition()));
     }
 
     public static @NotNull Material getMaterial(@NotNull GeneratedVeinMetadata vein) {
