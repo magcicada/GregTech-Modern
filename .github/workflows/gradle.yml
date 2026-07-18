@@ -1,6 +1,7 @@
 name: Build on Action-build Branch
 
 on:
+  workflow_dispatch: 
   push:
     branches:
       - Action-build
